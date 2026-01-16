@@ -41,6 +41,7 @@ type OrderItemWithDetails = {
   store_name: string
   store_code: string
   order_number: string
+  default_staff_name: string | null // 商品に設定された担当者
 }
 
 type HqInventory = {
@@ -63,7 +64,8 @@ type ProductSummary = {
     quantity: number
   }[]
   isPurchased: boolean
-  assignedStaff: "浅野" | "金本"
+  assignedStaff: string // 担当者名
+  defaultStaffName: string | null // 商品に設定されたデフォルト担当者
   hqStock: number
 }
 
@@ -112,11 +114,16 @@ export default function PurchasingPage() {
             id,
             product_code,
             product_name,
+            assigned_staff_id,
             makers (
               id,
               name
             ),
             categories (
+              id,
+              name
+            ),
+            staff (
               id,
               name
             )
@@ -151,8 +158,10 @@ export default function PurchasingPage() {
         id: string
         product_code: string
         product_name: string
+        assigned_staff_id: string | null
         makers: { id: string; name: string } | null
         categories: { id: string; name: string } | null
+        staff: { id: string; name: string } | null
       }
 
       return {
@@ -168,6 +177,7 @@ export default function PurchasingPage() {
         store_name: order?.stores?.store_name || "",
         store_code: order?.stores?.store_code || "",
         order_number: order?.order_number || "",
+        default_staff_name: product?.staff?.name || null,
       }
     })
 
@@ -186,10 +196,15 @@ export default function PurchasingPage() {
     return inv?.quantity || 0
   }
 
-  // Determine assigned staff based on HQ stock
-  const getAssignedStaff = (productId: string): "浅野" | "金本" => {
+  // Determine assigned staff based on HQ stock and product's default staff
+  // - 本部在庫あり → 浅野さん（商品担当に関わらず）
+  // - 本部在庫なし → 商品の担当者設定に従う
+  const getAssignedStaff = (productId: string, defaultStaffName: string | null): string => {
     const stock = getHqStock(productId)
-    return stock > 0 ? "浅野" : "金本"
+    if (stock > 0) {
+      return "浅野"
+    }
+    return defaultStaffName || "未設定"
   }
 
   useEffect(() => {
@@ -231,7 +246,8 @@ export default function PurchasingPage() {
           quantity: item.quantity,
         }],
         isPurchased: purchasedItems.has(item.product_id),
-        assignedStaff: getAssignedStaff(item.product_id),
+        assignedStaff: getAssignedStaff(item.product_id, item.default_staff_name),
+        defaultStaffName: item.default_staff_name,
         hqStock: hqStock,
       })
     }
@@ -243,7 +259,7 @@ export default function PurchasingPage() {
   productSummaries.forEach(p => {
     p.isPurchased = purchasedItems.has(p.product_id)
     p.hqStock = getHqStock(p.product_id)
-    p.assignedStaff = getAssignedStaff(p.product_id)
+    p.assignedStaff = getAssignedStaff(p.product_id, p.defaultStaffName)
   })
 
   // Filter by search, maker, and staff
@@ -301,11 +317,18 @@ export default function PurchasingPage() {
     setPurchasedItems(newPurchased)
   }
 
+  // Get unique staff names for filter
+  const uniqueStaffNames = [...new Set(productSummaries.map(p => p.assignedStaff))].sort()
+
   const totalProducts = filteredProducts.length
   const purchasedCount = filteredProducts.filter(p => purchasedItems.has(p.product_id)).length
   const totalQuantity = filteredProducts.reduce((sum, p) => sum + p.total_quantity, 0)
-  const asanoCount = filteredProducts.filter(p => p.assignedStaff === "浅野").length
-  const kanemotoCount = filteredProducts.filter(p => p.assignedStaff === "金本").length
+
+  // Count by staff
+  const staffCounts = uniqueStaffNames.reduce((acc, name) => {
+    acc[name] = filteredProducts.filter(p => p.assignedStaff === name).length
+    return acc
+  }, {} as Record<string, number>)
 
   return (
     <div className="space-y-6">
@@ -317,13 +340,16 @@ export default function PurchasingPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex gap-2">
-            <Badge variant="default" className="px-2 py-1">
-              浅野 {asanoCount}
-            </Badge>
-            <Badge variant="secondary" className="px-2 py-1">
-              金本 {kanemotoCount}
-            </Badge>
+          <div className="flex gap-2 flex-wrap">
+            {uniqueStaffNames.map((name) => (
+              <Badge
+                key={name}
+                variant={name === "浅野" ? "default" : name === "金本" ? "secondary" : "outline"}
+                className="px-2 py-1"
+              >
+                {name} {staffCounts[name] || 0}
+              </Badge>
+            ))}
           </div>
           <div className="text-right">
             <p className="text-sm text-muted-foreground">進捗</p>
@@ -349,14 +375,17 @@ export default function PurchasingPage() {
               />
             </div>
             <Select value={selectedStaff} onValueChange={setSelectedStaff}>
-              <SelectTrigger className="w-full sm:w-36">
+              <SelectTrigger className="w-full sm:w-40">
                 <User className="size-4 mr-2" />
                 <SelectValue placeholder="担当者" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">全員</SelectItem>
-                <SelectItem value="浅野">浅野さん</SelectItem>
-                <SelectItem value="金本">金本さん</SelectItem>
+                {uniqueStaffNames.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select value={selectedMaker} onValueChange={setSelectedMaker}>
@@ -448,7 +477,11 @@ export default function PurchasingPage() {
                                 </TableCell>
                                 <TableCell>
                                   <Badge
-                                    variant={product.assignedStaff === "浅野" ? "default" : "secondary"}
+                                    variant={
+                                      product.assignedStaff === "浅野" ? "default" :
+                                      product.assignedStaff === "金本" ? "secondary" :
+                                      product.assignedStaff === "未設定" ? "outline" : "secondary"
+                                    }
                                     className="text-xs"
                                   >
                                     {product.assignedStaff}
