@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>在庫管理・発注システム 機能説明書</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+      line-height: 1.8;
+      color: #333;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      background: #fff;
+    }
+    h1 {
+      font-size: 28px;
+      text-align: center;
+      margin-bottom: 10px;
+      color: #1a1a1a;
+      border-bottom: 3px solid #3b82f6;
+      padding-bottom: 15px;
+    }
+    h2 {
+      font-size: 20px;
+      margin-top: 40px;
+      margin-bottom: 15px;
+      color: #1a1a1a;
+      background: #f1f5f9;
+      padding: 10px 15px;
+      border-left: 4px solid #3b82f6;
+    }
+    h3 {
+      font-size: 16px;
+      margin-top: 25px;
+      margin-bottom: 10px;
+      color: #374151;
+    }
+    p {
+      margin-bottom: 12px;
+    }
+    .subtitle {
+      text-align: center;
+      color: #666;
+      margin-bottom: 40px;
+    }
+    .section {
+      margin-bottom: 30px;
+    }
+    .feature-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 15px 0;
+    }
+    .important-box {
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 15px 0;
+    }
+    .important-box h3 {
+      color: #b45309;
+      margin-top: 0;
+    }
+    ul, ol {
+      margin-left: 25px;
+      margin-bottom: 15px;
+    }
+    li {
+      margin-bottom: 8px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 15px 0;
+    }
+    th, td {
+      border: 1px solid #d1d5db;
+      padding: 10px 12px;
+      text-align: left;
+    }
+    th {
+      background: #f1f5f9;
+      font-weight: 600;
+    }
+    code {
+      background: #f1f5f9;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 14px;
+    }
+    .url-box {
+      background: #1e293b;
+      color: #e2e8f0;
+      padding: 12px 15px;
+      border-radius: 6px;
+      font-family: monospace;
+      margin: 10px 0;
+    }
+    .flow-diagram {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 20px;
+      font-family: monospace;
+      white-space: pre;
+      line-height: 1.5;
+      overflow-x: auto;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .badge-blue {
+      background: #3b82f6;
+      color: white;
+    }
+    .badge-gray {
+      background: #6b7280;
+      color: white;
+    }
+    .page-break {
+      page-break-before: always;
+    }
+    @media print {
+      body {
+        padding: 20px;
+      }
+      h2 {
+        page-break-after: avoid;
+      }
+      .feature-box, .important-box {
+        page-break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>在庫管理・発注システム<br>機能説明書</h1>
+  <p class="subtitle">美容サロン向け 在庫・発注管理ソリューション</p>
+
+  <div class="section">
+    <h2>システム概要</h2>
+    <p>各店舗からの発注を本部で一元管理し、効率的な購入作業をサポートするシステムです。</p>
+    <div class="feature-box">
+      <strong>主な特徴:</strong>
+      <ul>
+        <li>店舗ごとの専用発注URL（ログイン不要でシンプル）</li>
+        <li>商品別・メーカー別の発注集計</li>
+        <li>担当者別の購入リスト</li>
+        <li>本部在庫の自動判定による担当振り分け</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>画面一覧</h2>
+    <table>
+      <tr>
+        <th>画面名</th>
+        <th>URL</th>
+        <th>用途</th>
+      </tr>
+      <tr>
+        <td>ダッシュボード</td>
+        <td><code>/</code></td>
+        <td>全体状況の確認</td>
+      </tr>
+      <tr>
+        <td>商品マスター</td>
+        <td><code>/products</code></td>
+        <td>商品の登録・編集</td>
+      </tr>
+      <tr>
+        <td>メーカーマスター</td>
+        <td><code>/makers</code></td>
+        <td>メーカーの登録・編集</td>
+      </tr>
+      <tr>
+        <td>店舗マスター</td>
+        <td><code>/stores</code></td>
+        <td>店舗の登録・発注URL確認</td>
+      </tr>
+      <tr>
+        <td>担当者マスター</td>
+        <td><code>/staff</code></td>
+        <td>担当者の登録・編集</td>
+      </tr>
+      <tr>
+        <td>本部在庫</td>
+        <td><code>/inventory</code></td>
+        <td>在庫数の管理</td>
+      </tr>
+      <tr>
+        <td>発注管理</td>
+        <td><code>/orders</code></td>
+        <td>店舗からの発注一覧</td>
+      </tr>
+      <tr>
+        <td><strong>購入リスト</strong></td>
+        <td><code>/purchasing</code></td>
+        <td><strong>EC購入作業用</strong></td>
+      </tr>
+      <tr>
+        <td>在庫アラート</td>
+        <td><code>/alerts</code></td>
+        <td>在庫不足の確認</td>
+      </tr>
+      <tr>
+        <td>店舗発注画面</td>
+        <td><code>/store/[店舗コード]</code></td>
+        <td>各店舗の発注入力</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="page-break"></div>
+
+  <div class="section">
+    <h2>購入リスト（重要）</h2>
+    <div class="important-box">
+      <h3>浅野さん・金本さんがECサイトで購入する際に使う画面です</h3>
+      <p>各店舗からの発注を商品別に集計し、メーカー順に表示します。</p>
+    </div>
+
+    <h3>担当者の自動判定ロジック</h3>
+    <table>
+      <tr>
+        <th>条件</th>
+        <th>担当者</th>
+      </tr>
+      <tr>
+        <td>本部在庫がある</td>
+        <td><span class="badge badge-blue">浅野さん</span>（商品の担当設定に関わらず）</td>
+      </tr>
+      <tr>
+        <td>本部在庫がない</td>
+        <td><span class="badge badge-gray">商品マスターの担当者設定</span>に従う</td>
+      </tr>
+    </table>
+
+    <h3>使い方</h3>
+    <ol>
+      <li>担当者フィルターで自分の担当分を絞り込む</li>
+      <li>メーカー別にECサイトで購入</li>
+      <li>購入したらチェックボックスにチェック</li>
+      <li>進捗が画面上部に表示される</li>
+    </ol>
+  </div>
+
+  <div class="section">
+    <h2>店舗発注画面</h2>
+    <p>各店舗のスタッフが使う発注入力画面です。ログイン不要でシンプルに使えます。</p>
+
+    <h3>発注URL</h3>
+    <div class="url-box">
+      https://[ドメイン]/store/[店舗コード]
+    </div>
+    <p>※店舗マスター画面でURLをコピーできます</p>
+
+    <h3>操作手順</h3>
+    <ol>
+      <li>商品一覧から発注したい商品をタップ</li>
+      <li>数量を調整（＋/−ボタン）</li>
+      <li>「発注を送信」ボタンを押す</li>
+      <li>発注番号が表示されたら完了</li>
+    </ol>
+  </div>
+
+  <div class="section">
+    <h2>運用フロー</h2>
+    <div class="flow-diagram">
+[店舗]                         [本部]
+  │                              │
+  │  1. 発注画面で商品を選択       │
+  │  2. 発注を送信               │
+  │ ───────────────────────────→ │
+  │                              │  3. 発注管理で確認
+  │                              │  4. 購入リストで担当別に確認
+  │                              │  5. ECサイトで購入
+  │                              │  6. 商品到着後、在庫更新
+  │ ←─────────────────────────── │
+  │  7. 店舗へ発送                │
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>商品マスターの担当者設定</h2>
+    <p>各商品にデフォルトの発注担当者を設定できます。</p>
+    <div class="feature-box">
+      <strong>設定方法:</strong>
+      <ol>
+        <li>商品マスター画面を開く</li>
+        <li>商品を新規登録または編集</li>
+        <li>「担当者（ラベル）」で担当者を選択</li>
+        <li>保存</li>
+      </ol>
+    </div>
+    <p>※本部在庫がある場合は、この設定に関わらず浅野さんが担当になります。</p>
+  </div>
+
+</body>
+</html>

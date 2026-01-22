@@ -179,6 +179,8 @@ export default function OrdersPage() {
     if (error) {
       console.error("Error processing order:", error)
       alert("処理開始に失敗しました")
+      setIsSaving(false)
+      return // エラー時は明細更新をスキップ
     }
 
     // Update order items with fulfillment source
@@ -244,12 +246,15 @@ export default function OrdersPage() {
 
     setIsSaving(true)
 
+    // "auto" の場合は null として扱う（自動割当は処理開始時に行う）
+    const staffId = newOrderStaffId && newOrderStaffId !== "auto" ? newOrderStaffId : null
+
     const { data: newOrder, error: orderError } = await supabase
       .from("orders")
       .insert({
         store_id: newOrderStoreId,
-        assigned_staff_id: newOrderStaffId || null,
-        assignment_type: newOrderStaffId ? "manual" : null,
+        assigned_staff_id: staffId,
+        assignment_type: staffId ? "manual" : null,
         status: "pending",
       })
       .select()
@@ -275,7 +280,11 @@ export default function OrdersPage() {
 
     if (itemsError) {
       console.error("Error creating order items:", itemsError)
-      alert("発注明細の作成に失敗しました")
+      // 明細挿入失敗時は注文も削除してロールバック
+      await supabase.from("orders").delete().eq("id", newOrder.id)
+      alert("発注明細の作成に失敗しました。発注はキャンセルされました。")
+      setIsSaving(false)
+      return
     }
 
     setIsSaving(false)
@@ -559,12 +568,12 @@ export default function OrdersPage() {
               </div>
               <div className="space-y-2">
                 <Label>担当者</Label>
-                <Select value={newOrderStaffId} onValueChange={setNewOrderStaffId}>
+                <Select value={newOrderStaffId || "auto"} onValueChange={(v) => setNewOrderStaffId(v === "auto" ? "" : v)}>
                   <SelectTrigger>
                     <SelectValue placeholder="自動割当" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="auto">自動割当</SelectItem>
+                    <SelectItem value="auto">自動割当（処理開始時に決定）</SelectItem>
                     {staffList.map((s) => (
                       <SelectItem key={s.id} value={s.id}>
                         {s.name}
