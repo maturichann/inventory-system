@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>在庫管理・発注システム ご利用ガイド</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    @page {
+      size: A4;
+      margin: 15mm;
+    }
+
+    body {
+      font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+      line-height: 1.8;
+      color: #1a1a1a;
+      max-width: 210mm;
+      margin: 0 auto;
+      padding: 20px;
+      background: #fff;
+      font-size: 14px;
+    }
+
+    .cover {
+      text-align: center;
+      padding: 80px 20px;
+      margin-bottom: 40px;
+      border-bottom: 3px solid #2563eb;
+    }
+
+    .cover h1 {
+      font-size: 32px;
+      color: #1e40af;
+      margin-bottom: 20px;
+      letter-spacing: 2px;
+    }
+
+    .cover .subtitle {
+      font-size: 18px;
+      color: #64748b;
+      margin-bottom: 40px;
+    }
+
+    .cover .info {
+      font-size: 14px;
+      color: #94a3b8;
+    }
+
+    h2 {
+      font-size: 20px;
+      color: #1e40af;
+      margin: 40px 0 20px;
+      padding: 12px 16px;
+      background: linear-gradient(90deg, #eff6ff 0%, #ffffff 100%);
+      border-left: 4px solid #2563eb;
+      border-radius: 0 8px 8px 0;
+    }
+
+    h3 {
+      font-size: 16px;
+      color: #334155;
+      margin: 25px 0 12px;
+      padding-bottom: 6px;
+      border-bottom: 2px solid #e2e8f0;
+    }
+
+    p {
+      margin-bottom: 14px;
+      text-align: justify;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      margin: 20px 0;
+    }
+
+    .feature-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .feature-card h4 {
+      font-size: 15px;
+      color: #1e40af;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .feature-card p {
+      font-size: 13px;
+      color: #64748b;
+      margin: 0;
+    }
+
+    .icon {
+      width: 24px;
+      height: 24px;
+      background: #2563eb;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 12px;
+    }
+
+    .flow-section {
+      background: #fafafa;
+      border-radius: 12px;
+      padding: 24px;
+      margin: 20px 0;
+    }
+
+    .flow-steps {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin: 20px 0;
+    }
+
+    .flow-step {
+      flex: 1;
+      text-align: center;
+      position: relative;
+    }
+
+    .flow-step:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      top: 20px;
+      right: -10%;
+      width: 20%;
+      height: 2px;
+      background: #cbd5e1;
+    }
+
+    .flow-step .number {
+      width: 40px;
+      height: 40px;
+      background: #2563eb;
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 10px;
+      font-weight: bold;
+    }
+
+    .flow-step .title {
+      font-weight: 600;
+      font-size: 13px;
+      color: #334155;
+      margin-bottom: 4px;
+    }
+
+    .flow-step .desc {
+      font-size: 11px;
+      color: #64748b;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 13px;
+    }
+
+    th, td {
+      border: 1px solid #e2e8f0;
+      padding: 12px 14px;
+      text-align: left;
+    }
+
+    th {
+      background: #f1f5f9;
+      font-weight: 600;
+      color: #334155;
+    }
+
+    tr:nth-child(even) {
+      background: #f8fafc;
+    }
+
+    .highlight-box {
+      background: linear-gradient(135deg, #fef3c7 0%, #fef9c3 100%);
+      border: 1px solid #fbbf24;
+      border-radius: 12px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+
+    .highlight-box h4 {
+      color: #b45309;
+      margin-bottom: 10px;
+      font-size: 15px;
+    }
+
+    .highlight-box ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    .highlight-box li {
+      color: #92400e;
+      margin-bottom: 6px;
+    }
+
+    .info-box {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 12px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+
+    .info-box h4 {
+      color: #1e40af;
+      margin-bottom: 10px;
+    }
+
+    .screen-list {
+      margin: 16px 0;
+    }
+
+    .screen-item {
+      display: flex;
+      align-items: flex-start;
+      padding: 14px;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      margin-bottom: 10px;
+    }
+
+    .screen-item .name {
+      font-weight: 600;
+      color: #1e40af;
+      min-width: 120px;
+    }
+
+    .screen-item .desc {
+      color: #64748b;
+      flex: 1;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .badge-blue {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+
+    .badge-green {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .badge-orange {
+      background: #ffedd5;
+      color: #c2410c;
+    }
+
+    .page-break {
+      page-break-before: always;
+    }
+
+    .two-column {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    .merit-list {
+      list-style: none;
+      padding: 0;
+    }
+
+    .merit-list li {
+      padding: 12px 16px;
+      background: #f0fdf4;
+      border-left: 4px solid #22c55e;
+      margin-bottom: 10px;
+      border-radius: 0 8px 8px 0;
+    }
+
+    .merit-list li strong {
+      color: #166534;
+    }
+
+    footer {
+      margin-top: 60px;
+      padding-top: 20px;
+      border-top: 1px solid #e2e8f0;
+      text-align: center;
+      color: #94a3b8;
+      font-size: 12px;
+    }
+
+    @media print {
+      body {
+        padding: 0;
+      }
+      .cover {
+        padding: 60px 20px;
+      }
+      h2 {
+        page-break-after: avoid;
+      }
+      .feature-card, .screen-item, .flow-section {
+        page-break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="cover">
+    <h1>在庫管理・発注システム</h1>
+    <p class="subtitle">美容サロン向け 在庫・発注管理ソリューション</p>
+    <p class="info">ご利用ガイド</p>
+  </div>
+
+  <h2>1. システム概要</h2>
+
+  <p>本システムは、複数店舗を展開する美容サロン様向けの在庫・発注管理ソリューションです。各店舗からの発注を本部で一元管理し、効率的な購入・在庫管理をサポートします。</p>
+
+  <div class="feature-grid">
+    <div class="feature-card">
+      <h4><span class="icon">1</span> かんたん発注</h4>
+      <p>店舗スタッフはURLにアクセスするだけ。ログイン不要で、商品を選んでタップするだけの簡単操作。</p>
+    </div>
+    <div class="feature-card">
+      <h4><span class="icon">2</span> 自動集計</h4>
+      <p>各店舗からの発注を商品別・メーカー別に自動集計。購入作業の効率が大幅に向上します。</p>
+    </div>
+    <div class="feature-card">
+      <h4><span class="icon">3</span> 担当者振り分け</h4>
+      <p>本部在庫の有無に応じて、購入担当者を自動で振り分け。作業分担が明確になります。</p>
+    </div>
+    <div class="feature-card">
+      <h4><span class="icon">4</span> 在庫アラート</h4>
+      <p>在庫が閾値を下回ると自動でアラート表示。発注漏れを防ぎ、欠品リスクを軽減します。</p>
+    </div>
+  </div>
+
+  <h2>2. 導入メリット</h2>
+
+  <ul class="merit-list">
+    <li><strong>発注業務の効率化</strong> - 店舗からの発注がリアルタイムで本部に届き、集計作業が不要に</li>
+    <li><strong>購入ミスの削減</strong> - 商品別の必要数量が自動計算され、発注漏れ・重複発注を防止</li>
+    <li><strong>在庫の可視化</strong> - 本部在庫がリアルタイムで把握でき、適正在庫の維持が容易に</li>
+    <li><strong>作業分担の明確化</strong> - 担当者別の購入リストで、誰が何を買うか一目瞭然</li>
+    <li><strong>履歴管理</strong> - すべての発注・在庫変動が記録され、いつでも確認可能</li>
+  </ul>
+
+  <div class="page-break"></div>
+
+  <h2>3. 業務フロー</h2>
+
+  <div class="flow-section">
+    <div class="flow-steps">
+      <div class="flow-step">
+        <div class="number">1</div>
+        <div class="title">店舗で発注</div>
+        <div class="desc">専用URLから<br>商品を選択</div>
+      </div>
+      <div class="flow-step">
+        <div class="number">2</div>
+        <div class="title">本部で確認</div>
+        <div class="desc">発注管理画面で<br>一覧確認</div>
+      </div>
+      <div class="flow-step">
+        <div class="number">3</div>
+        <div class="title">処理開始</div>
+        <div class="desc">在庫確認・<br>担当者割当</div>
+      </div>
+      <div class="flow-step">
+        <div class="number">4</div>
+        <div class="title">購入作業</div>
+        <div class="desc">購入リストで<br>EC購入</div>
+      </div>
+      <div class="flow-step">
+        <div class="number">5</div>
+        <div class="title">完了処理</div>
+        <div class="desc">在庫反映・<br>発送準備</div>
+      </div>
+    </div>
+  </div>
+
+  <h3>店舗側の操作（約1分で完了）</h3>
+  <table>
+    <tr>
+      <th style="width: 80px;">ステップ</th>
+      <th>操作内容</th>
+    </tr>
+    <tr>
+      <td><span class="badge badge-blue">1</span></td>
+      <td>店舗専用のURLにアクセス（QRコードからも可）</td>
+    </tr>
+    <tr>
+      <td><span class="badge badge-blue">2</span></td>
+      <td>発注したい商品をタップしてカートに追加</td>
+    </tr>
+    <tr>
+      <td><span class="badge badge-blue">3</span></td>
+      <td>数量を調整（＋/−ボタンまたは直接入力）</td>
+    </tr>
+    <tr>
+      <td><span class="badge badge-blue">4</span></td>
+      <td>「発注を送信」ボタンをタップ</td>
+    </tr>
+    <tr>
+      <td><span class="badge badge-green">完了</span></td>
+      <td>発注番号が表示されたら完了</td>
+    </tr>
+  </table>
+
+  <h3>本部側の操作</h3>
+  <table>
+    <tr>
+      <th style="width: 80px;">ステップ</th>
+      <th>操作内容</th>
+    </tr>
+    <tr>
+      <td><span class="badge badge-blue">1</span></td>
+      <td>発注管理画面で新規発注を確認</td>
+    </tr>
+    <tr>
+      <td><span class="badge badge-blue">2</span></td>
+      <td>「処理開始」で本部在庫を確認、出荷元を決定</td>
+    </tr>
+    <tr>
+      <td><span class="badge badge-blue">3</span></td>
+      <td>購入リスト画面で担当者別にフィルタリング</td>
+    </tr>
+    <tr>
+      <td><span class="badge badge-blue">4</span></td>
+      <td>ECサイトで購入、チェックボックスで進捗管理</td>
+    </tr>
+    <tr>
+      <td><span class="badge badge-green">完了</span></td>
+      <td>発注管理画面で「完了」処理、在庫自動反映</td>
+    </tr>
+  </table>
+
+  <div class="page-break"></div>
+
+  <h2>4. 画面一覧</h2>
+
+  <h3>本部向け画面</h3>
+  <div class="screen-list">
+    <div class="screen-item">
+      <span class="name">ダッシュボード</span>
+      <span class="desc">システム全体の状況をひと目で確認。未処理発注数、在庫アラートなどを表示。</span>
+    </div>
+    <div class="screen-item">
+      <span class="name">発注管理</span>
+      <span class="desc">店舗からの発注一覧。ステータス管理、処理開始・完了の操作を行います。</span>
+    </div>
+    <div class="screen-item">
+      <span class="name">購入リスト</span>
+      <span class="desc">EC購入作業用。商品別に集計され、担当者でフィルタリング可能。</span>
+    </div>
+    <div class="screen-item">
+      <span class="name">本部在庫</span>
+      <span class="desc">在庫数の確認・入出庫・調整。在庫不足のアラート表示機能付き。</span>
+    </div>
+    <div class="screen-item">
+      <span class="name">在庫アラート</span>
+      <span class="desc">閾値を下回った商品の一覧。発注が必要な商品を把握できます。</span>
+    </div>
+  </div>
+
+  <h3>マスター管理画面</h3>
+  <div class="screen-list">
+    <div class="screen-item">
+      <span class="name">商品マスター</span>
+      <span class="desc">商品の登録・編集。カテゴリ、メーカー、担当者ラベルの設定。</span>
+    </div>
+    <div class="screen-item">
+      <span class="name">メーカーマスター</span>
+      <span class="desc">仕入先メーカーの登録・管理。購入リストでのグルーピングに使用。</span>
+    </div>
+    <div class="screen-item">
+      <span class="name">店舗マスター</span>
+      <span class="desc">店舗の登録・管理。各店舗の発注用URLを確認・コピーできます。</span>
+    </div>
+    <div class="screen-item">
+      <span class="name">担当者マスター</span>
+      <span class="desc">購入担当者の登録・管理。商品ごとのデフォルト担当者設定に使用。</span>
+    </div>
+  </div>
+
+  <h3>店舗向け画面</h3>
+  <div class="screen-list">
+    <div class="screen-item">
+      <span class="name">店舗発注画面</span>
+      <span class="desc">各店舗専用の発注入力画面。ログイン不要でシンプルに発注可能。</span>
+    </div>
+  </div>
+
+  <div class="page-break"></div>
+
+  <h2>5. 担当者の自動振り分けロジック</h2>
+
+  <p>購入リスト画面では、商品ごとに購入担当者が自動で決定されます。</p>
+
+  <div class="info-box">
+    <h4>振り分けルール</h4>
+    <table>
+      <tr>
+        <th>条件</th>
+        <th>担当者</th>
+        <th>理由</th>
+      </tr>
+      <tr>
+        <td>本部在庫がある</td>
+        <td><span class="badge badge-green">浅野さん</span></td>
+        <td>本部から直接出荷するため</td>
+      </tr>
+      <tr>
+        <td>本部在庫がない</td>
+        <td><span class="badge badge-orange">商品の担当者設定</span></td>
+        <td>ECサイトから購入するため</td>
+      </tr>
+    </table>
+  </div>
+
+  <p>商品マスターで設定した「担当者ラベル」が、本部在庫がない場合のデフォルト担当者として使用されます。これにより、商品カテゴリや仕入先に応じた作業分担が可能です。</p>
+
+  <h2>6. 店舗発注URLについて</h2>
+
+  <div class="highlight-box">
+    <h4>店舗ごとの専用URL</h4>
+    <p>各店舗には専用の発注URLが発行されます。このURLにアクセスするだけで、ログインなしで発注が可能です。</p>
+    <ul>
+      <li>店舗マスター画面でURLを確認・コピーできます</li>
+      <li>QRコードを作成して店舗に掲示することも可能</li>
+      <li>URLを知っている人だけがアクセスできます</li>
+    </ul>
+  </div>
+
+  <h2>7. よくある質問</h2>
+
+  <h3>Q. 発注を間違えた場合はどうすればいいですか？</h3>
+  <p>A. 本部の発注管理画面から、該当の発注を確認・編集できます。処理開始前であれば、明細の変更やキャンセルが可能です。</p>
+
+  <h3>Q. 在庫の閾値はどこで設定しますか？</h3>
+  <p>A. 本部在庫画面で、商品ごとに閾値を設定できます。在庫数がこの閾値を下回ると、アラートが表示されます。</p>
+
+  <h3>Q. 複数店舗から同じ商品の発注があった場合は？</h3>
+  <p>A. 購入リスト画面で商品別に自動集計されます。必要な総数量が表示されるため、まとめて購入できます。</p>
+
+  <h3>Q. スマートフォンからも操作できますか？</h3>
+  <p>A. はい、すべての画面がスマートフォン・タブレットに対応しています。店舗発注画面は特にモバイル操作を意識した設計になっています。</p>
+
+  <h3>Q. ECサイトで購入した商品が届いたら、どこで在庫登録しますか？</h3>
+  <p>A. <strong>本部在庫画面</strong>で入庫処理を行います。該当商品の「入庫」ボタンをクリックし、届いた数量を入力してください。これにより本部在庫に反映され、次回以降の発注で「本部在庫あり」として処理されるようになります。</p>
+
+  <div class="info-box" style="margin-top: 20px;">
+    <h4>入庫処理の手順</h4>
+    <table>
+      <tr>
+        <th style="width: 80px;">ステップ</th>
+        <th>操作内容</th>
+      </tr>
+      <tr>
+        <td><span class="badge badge-blue">1</span></td>
+        <td>本部在庫画面を開く</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-blue">2</span></td>
+        <td>届いた商品を検索して見つける</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-blue">3</span></td>
+        <td>「入庫」ボタンをクリック</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-blue">4</span></td>
+        <td>届いた数量を入力し、理由欄に「EC購入入荷」などを記入</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-green">完了</span></td>
+        <td>在庫数が更新され、履歴にも記録されます</td>
+      </tr>
+    </table>
+  </div>
+
+  <footer>
+    <p>在庫管理・発注システム ご利用ガイド</p>
+    <p>ご不明な点がございましたら、管理者までお問い合わせください。</p>
+  </footer>
+
+</body>
+</html>

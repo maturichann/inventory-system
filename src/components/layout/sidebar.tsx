@@ -12,6 +12,7 @@ import {
   ClipboardList,
   Users,
   ShoppingBag,
+  BookOpen,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -25,6 +26,7 @@ const navigation = [
   { name: "発注管理", href: "/orders", icon: ShoppingCart },
   { name: "購入リスト", href: "/purchasing", icon: ShoppingBag },
   { name: "在庫アラート", href: "/alerts", icon: AlertTriangle },
+  { name: "操作マニュアル", href: "/manual", icon: BookOpen },
 ]
 
 export function Sidebar() {
