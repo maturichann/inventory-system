@@ -281,8 +281,14 @@ export default function OrdersPage() {
     if (itemsError) {
       console.error("Error creating order items:", itemsError)
       // 明細挿入失敗時は注文も削除してロールバック
-      await supabase.from("orders").delete().eq("id", newOrder.id)
-      alert("発注明細の作成に失敗しました。発注はキャンセルされました。")
+      const { error: deleteError } = await supabase.from("orders").delete().eq("id", newOrder.id)
+      if (deleteError) {
+        // 削除も失敗した場合はログに残す（要手動対応）
+        console.error("Critical: Failed to rollback order:", deleteError, "Order ID:", newOrder.id)
+        alert(`発注明細の作成に失敗しました。注文ID: ${newOrder.id} の手動削除が必要です。`)
+      } else {
+        alert("発注明細の作成に失敗しました。発注はキャンセルされました。")
+      }
       setIsSaving(false)
       return
     }
