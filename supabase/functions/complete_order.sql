@@ -49,10 +49,11 @@ BEGIN
   LOOP
     -- 本部在庫から出荷する場合のみ在庫を減らす
     IF v_item.fulfilled_from = 'hq' THEN
-      -- 在庫レコードを取得
+      -- 在庫レコードを取得（FOR UPDATEでロックして競合状態を防止）
       SELECT id, quantity INTO v_inventory
       FROM hq_inventory
-      WHERE product_id = v_item.product_id;
+      WHERE product_id = v_item.product_id
+      FOR UPDATE;
 
       IF v_inventory.id IS NOT NULL THEN
         -- 新しい在庫数を計算（0未満にはしない）

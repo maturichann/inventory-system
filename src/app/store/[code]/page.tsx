@@ -137,51 +137,41 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
   const handleSubmitOrder = async () => {
     if (!store || orderItems.length === 0) return
 
+    // 数量バリデーション
+    for (const item of orderItems) {
+      if (item.quantity < 1 || item.quantity > 99999) {
+        alert("数量は1〜99999の範囲で入力してください")
+        return
+      }
+    }
+
     setIsSubmitting(true)
 
-    // Create order
-    const { data: newOrder, error: orderError } = await supabase
-      .from("orders")
-      .insert({
-        store_id: store.id,
-        status: "pending",
-      })
-      .select()
-      .single()
+    // RPCでトランザクション処理（発注 + 明細を一括作成）
+    const { data, error } = await supabase.rpc("create_order_with_items", {
+      p_store_id: store.id,
+      p_items: orderItems.map(item => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+      })),
+    })
 
-    if (orderError || !newOrder) {
-      console.error("Error creating order:", orderError)
+    if (error) {
+      console.error("Error creating order:", error)
       alert("発注の送信に失敗しました")
       setIsSubmitting(false)
       return
     }
 
-    // Insert order items
-    const itemsToInsert = orderItems.map(item => ({
-      order_id: newOrder.id,
-      product_id: item.product_id,
-      quantity: item.quantity,
-    }))
+    const result = data as { success: boolean; error?: string; order_number?: string }
 
-    const { error: itemsError } = await supabase
-      .from("order_items")
-      .insert(itemsToInsert)
-
-    if (itemsError) {
-      console.error("Error creating order items:", itemsError)
-      // 明細挿入失敗時は注文も削除してロールバック
-      const { error: deleteError } = await supabase.from("orders").delete().eq("id", newOrder.id)
-      if (deleteError) {
-        console.error("Critical: Failed to rollback order:", deleteError, "Order ID:", newOrder.id)
-        alert(`発注に失敗しました。管理者に連絡してください。(注文ID: ${newOrder.id})`)
-      } else {
-        alert("発注に失敗しました。もう一度お試しください。")
-      }
+    if (!result.success) {
+      alert(`発注に失敗しました: ${result.error}`)
       setIsSubmitting(false)
       return
     }
 
-    setOrderNumber(newOrder.order_number)
+    setOrderNumber(result.order_number || "")
     setIsSuccessDialogOpen(true)
     setOrderItems([])
     setIsSubmitting(false)

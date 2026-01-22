@@ -115,63 +115,34 @@ export default function InventoryPage() {
     if (!selectedItem) return
 
     const qty = parseInt(adjustQuantity)
-    if (isNaN(qty) || qty <= 0) return
+    if (isNaN(qty) || qty <= 0 || qty > 99999) {
+      alert("数量は1〜99999の範囲で入力してください")
+      return
+    }
 
     setIsSaving(true)
 
-    const currentQuantity = selectedItem.hq_inventory?.quantity ?? 0
-    let newQuantity = currentQuantity
-
-    if (adjustType === "in") {
-      newQuantity = currentQuantity + qty
-    } else if (adjustType === "out") {
-      newQuantity = Math.max(0, currentQuantity - qty)
-    } else {
-      newQuantity = qty
-    }
-
-    if (selectedItem.hq_inventory) {
-      const { error } = await supabase
-        .from("hq_inventory")
-        .update({ quantity: newQuantity })
-        .eq("id", selectedItem.hq_inventory.id)
-
-      if (error) {
-        console.error("Error updating inventory:", error)
-        alert("在庫の更新に失敗しました")
-        setIsSaving(false)
-        return
-      }
-    } else {
-      const { error } = await supabase
-        .from("hq_inventory")
-        .insert({
-          product_id: selectedItem.id,
-          quantity: newQuantity,
-          threshold: 5,
-        })
-
-      if (error) {
-        console.error("Error creating inventory:", error)
-        alert("在庫の作成に失敗しました")
-        setIsSaving(false)
-        return
-      }
-    }
-
-    // 在庫更新成功時のみ履歴を記録
-    const { error: historyError } = await supabase.from("inventory_history").insert({
-      product_id: selectedItem.id,
-      change_type: adjustType,
-      quantity: adjustType === "adjust" ? newQuantity - currentQuantity : (adjustType === "in" ? qty : -qty),
-      previous_quantity: currentQuantity,
-      new_quantity: newQuantity,
-      reason: adjustReason || null,
+    // RPCでトランザクション処理（在庫更新 + 履歴記録を一括）
+    const { data, error } = await supabase.rpc("adjust_inventory", {
+      p_product_id: selectedItem.id,
+      p_adjust_type: adjustType,
+      p_quantity: qty,
+      p_reason: adjustReason || null,
     })
 
-    if (historyError) {
-      console.error("Error recording history:", historyError)
-      // 在庫は更新済みなので警告のみ
+    if (error) {
+      console.error("Error adjusting inventory:", error)
+      alert("在庫調整に失敗しました")
+      setIsSaving(false)
+      return
+    }
+
+    const result = data as { success: boolean; error?: string }
+
+    if (!result.success) {
+      alert(`在庫調整に失敗しました: ${result.error}`)
+      setIsSaving(false)
+      return
     }
 
     setIsSaving(false)

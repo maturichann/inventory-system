@@ -183,14 +183,17 @@ export default function OrdersPage() {
       return // エラー時は明細更新をスキップ
     }
 
-    // Update order items with fulfillment source
+    // Update order items with fulfillment source and HQ stock at order time
     for (const item of order.order_items) {
       const hqStock = item.products?.hq_inventory?.quantity ?? 0
       const fulfilledFrom = hqStock >= item.quantity ? "hq" : "supplier"
 
       await supabase
         .from("order_items")
-        .update({ fulfilled_from: fulfilledFrom })
+        .update({
+          fulfilled_from: fulfilledFrom,
+          hq_stock_at_order: hqStock,  // 処理開始時の本部在庫を記録
+        })
         .eq("id", item.id)
     }
 
@@ -230,51 +233,40 @@ export default function OrdersPage() {
     e.preventDefault()
     if (!newOrderStoreId || orderItems.length === 0) return
 
+    // 数量バリデーション
+    for (const item of orderItems) {
+      if (item.quantity < 1 || item.quantity > 99999) {
+        alert("数量は1〜99999の範囲で入力してください")
+        return
+      }
+    }
+
     setIsSaving(true)
 
     // "auto" の場合は null として扱う（自動割当は処理開始時に行う）
     const staffId = newOrderStaffId && newOrderStaffId !== "auto" ? newOrderStaffId : null
 
-    const { data: newOrder, error: orderError } = await supabase
-      .from("orders")
-      .insert({
-        store_id: newOrderStoreId,
-        assigned_staff_id: staffId,
-        assignment_type: staffId ? "manual" : null,
-        status: "pending",
-      })
-      .select()
-      .single()
+    // RPCでトランザクション処理（発注 + 明細を一括作成）
+    const { data, error } = await supabase.rpc("create_order_with_items", {
+      p_store_id: newOrderStoreId,
+      p_items: orderItems.map(item => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+      })),
+      p_staff_id: staffId,
+    })
 
-    if (orderError || !newOrder) {
-      console.error("Error creating order:", orderError)
+    if (error) {
+      console.error("Error creating order:", error)
       alert("発注作成に失敗しました")
       setIsSaving(false)
       return
     }
 
-    // Insert order items
-    const itemsToInsert = orderItems.map(item => ({
-      order_id: newOrder.id,
-      product_id: item.product_id,
-      quantity: item.quantity,
-    }))
+    const result = data as { success: boolean; error?: string; order_number?: string }
 
-    const { error: itemsError } = await supabase
-      .from("order_items")
-      .insert(itemsToInsert)
-
-    if (itemsError) {
-      console.error("Error creating order items:", itemsError)
-      // 明細挿入失敗時は注文も削除してロールバック
-      const { error: deleteError } = await supabase.from("orders").delete().eq("id", newOrder.id)
-      if (deleteError) {
-        // 削除も失敗した場合はログに残す（要手動対応）
-        console.error("Critical: Failed to rollback order:", deleteError, "Order ID:", newOrder.id)
-        alert(`発注明細の作成に失敗しました。注文ID: ${newOrder.id} の手動削除が必要です。`)
-      } else {
-        alert("発注明細の作成に失敗しました。発注はキャンセルされました。")
-      }
+    if (!result.success) {
+      alert(`発注作成に失敗しました: ${result.error}`)
       setIsSaving(false)
       return
     }
