@@ -6,8 +6,8 @@
 
 CREATE OR REPLACE FUNCTION create_order_with_items(
   p_store_id UUID,
-  p_staff_id UUID DEFAULT NULL,
-  p_items JSONB -- [{"product_id": "uuid", "quantity": 1}, ...]
+  p_items JSONB, -- [{"product_id": "uuid", "quantity": 1}, ...]
+  p_staff_id UUID DEFAULT NULL
 )
 RETURNS JSON
 LANGUAGE plpgsql
