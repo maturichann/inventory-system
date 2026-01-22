@@ -139,6 +139,8 @@ export default function InventoryPage() {
       if (error) {
         console.error("Error updating inventory:", error)
         alert("在庫の更新に失敗しました")
+        setIsSaving(false)
+        return
       }
     } else {
       const { error } = await supabase
@@ -152,10 +154,13 @@ export default function InventoryPage() {
       if (error) {
         console.error("Error creating inventory:", error)
         alert("在庫の作成に失敗しました")
+        setIsSaving(false)
+        return
       }
     }
 
-    await supabase.from("inventory_history").insert({
+    // 在庫更新成功時のみ履歴を記録
+    const { error: historyError } = await supabase.from("inventory_history").insert({
       product_id: selectedItem.id,
       change_type: adjustType,
       quantity: adjustType === "adjust" ? newQuantity - currentQuantity : (adjustType === "in" ? qty : -qty),
@@ -163,6 +168,11 @@ export default function InventoryPage() {
       new_quantity: newQuantity,
       reason: adjustReason || null,
     })
+
+    if (historyError) {
+      console.error("Error recording history:", historyError)
+      // 在庫は更新済みなので警告のみ
+    }
 
     setIsSaving(false)
     setIsAdjustDialogOpen(false)

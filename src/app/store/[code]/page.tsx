@@ -169,7 +169,14 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
 
     if (itemsError) {
       console.error("Error creating order items:", itemsError)
-      alert("発注明細の作成に失敗しました")
+      // 明細挿入失敗時は注文も削除してロールバック
+      const { error: deleteError } = await supabase.from("orders").delete().eq("id", newOrder.id)
+      if (deleteError) {
+        console.error("Critical: Failed to rollback order:", deleteError, "Order ID:", newOrder.id)
+        alert(`発注に失敗しました。管理者に連絡してください。(注文ID: ${newOrder.id})`)
+      } else {
+        alert("発注に失敗しました。もう一度お試しください。")
+      }
       setIsSubmitting(false)
       return
     }

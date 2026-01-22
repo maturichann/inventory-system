@@ -202,16 +202,24 @@ export default function OrdersPage() {
     setIsSaving(true)
 
     // Deduct from HQ inventory for items fulfilled from HQ
+    const inventoryErrors: string[] = []
     for (const item of order.order_items) {
       if (item.fulfilled_from === "hq" && item.products?.hq_inventory) {
         const newQuantity = Math.max(0, item.products.hq_inventory.quantity - item.quantity)
-        await supabase
+
+        const { error: invError } = await supabase
           .from("hq_inventory")
           .update({ quantity: newQuantity })
           .eq("id", item.products.hq_inventory.id)
 
-        // Record inventory history
-        await supabase.from("inventory_history").insert({
+        if (invError) {
+          console.error("Error updating inventory:", invError)
+          inventoryErrors.push(`在庫更新失敗: ${item.products?.product_code}`)
+          continue // 次のアイテムへ（履歴は記録しない）
+        }
+
+        // Record inventory history (在庫更新成功時のみ)
+        const { error: histError } = await supabase.from("inventory_history").insert({
           product_id: item.product_id,
           change_type: "out",
           quantity: -item.quantity,
@@ -219,7 +227,19 @@ export default function OrdersPage() {
           new_quantity: newQuantity,
           reason: `発注完了: ${order.order_number}`,
         })
+
+        if (histError) {
+          console.error("Error recording history:", histError)
+          // 履歴記録失敗は警告のみ（在庫は更新済み）
+        }
       }
+    }
+
+    // 在庫更新エラーがあれば完了にしない
+    if (inventoryErrors.length > 0) {
+      alert(`在庫更新に失敗しました:\n${inventoryErrors.join("\n")}\n\n発注は完了していません。`)
+      setIsSaving(false)
+      return
     }
 
     const { error } = await supabase
@@ -232,7 +252,9 @@ export default function OrdersPage() {
 
     if (error) {
       console.error("Error completing order:", error)
-      alert("完了処理に失敗しました")
+      alert("完了処理に失敗しました（在庫は更新済み）")
+      setIsSaving(false)
+      return
     }
 
     setIsSaving(false)
