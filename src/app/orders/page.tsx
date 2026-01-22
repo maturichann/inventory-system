@@ -201,58 +201,22 @@ export default function OrdersPage() {
   const handleCompleteOrder = async (order: OrderWithDetails) => {
     setIsSaving(true)
 
-    // Deduct from HQ inventory for items fulfilled from HQ
-    const inventoryErrors: string[] = []
-    for (const item of order.order_items) {
-      if (item.fulfilled_from === "hq" && item.products?.hq_inventory) {
-        const newQuantity = Math.max(0, item.products.hq_inventory.quantity - item.quantity)
+    // RPCでトランザクション処理（在庫更新 + 履歴記録 + ステータス更新を一括）
+    const { data, error } = await supabase.rpc("complete_order", {
+      p_order_id: order.id,
+    })
 
-        const { error: invError } = await supabase
-          .from("hq_inventory")
-          .update({ quantity: newQuantity })
-          .eq("id", item.products.hq_inventory.id)
-
-        if (invError) {
-          console.error("Error updating inventory:", invError)
-          inventoryErrors.push(`在庫更新失敗: ${item.products?.product_code}`)
-          continue // 次のアイテムへ（履歴は記録しない）
-        }
-
-        // Record inventory history (在庫更新成功時のみ)
-        const { error: histError } = await supabase.from("inventory_history").insert({
-          product_id: item.product_id,
-          change_type: "out",
-          quantity: -item.quantity,
-          previous_quantity: item.products.hq_inventory.quantity,
-          new_quantity: newQuantity,
-          reason: `発注完了: ${order.order_number}`,
-        })
-
-        if (histError) {
-          console.error("Error recording history:", histError)
-          // 履歴記録失敗は警告のみ（在庫は更新済み）
-        }
-      }
-    }
-
-    // 在庫更新エラーがあれば完了にしない
-    if (inventoryErrors.length > 0) {
-      alert(`在庫更新に失敗しました:\n${inventoryErrors.join("\n")}\n\n発注は完了していません。`)
+    if (error) {
+      console.error("Error completing order:", error)
+      alert("完了処理に失敗しました")
       setIsSaving(false)
       return
     }
 
-    const { error } = await supabase
-      .from("orders")
-      .update({
-        status: "completed",
-        completed_at: new Date().toISOString(),
-      })
-      .eq("id", order.id)
+    const result = data as { success: boolean; error?: string; order_number?: string }
 
-    if (error) {
-      console.error("Error completing order:", error)
-      alert("完了処理に失敗しました（在庫は更新済み）")
+    if (!result.success) {
+      alert(`完了処理に失敗しました: ${result.error}`)
       setIsSaving(false)
       return
     }
