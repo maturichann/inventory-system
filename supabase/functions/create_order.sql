@@ -12,12 +12,60 @@ CREATE OR REPLACE FUNCTION create_order_with_items(
 RETURNS JSON
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_order_id UUID;
   v_order_number TEXT;
   v_item JSONB;
+  v_product_id UUID;
+  v_quantity INT;
 BEGIN
+  -- バリデーション: 明細が空でないこと
+  IF p_items IS NULL OR jsonb_array_length(p_items) = 0 THEN
+    RETURN json_build_object(
+      'success', false,
+      'error', '発注明細が空です'
+    );
+  END IF;
+
+  -- バリデーション: 各明細のproduct_idとquantityをチェック
+  FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
+  LOOP
+    v_product_id := (v_item->>'product_id')::UUID;
+    v_quantity := (v_item->>'quantity')::INT;
+
+    IF v_product_id IS NULL THEN
+      RETURN json_build_object(
+        'success', false,
+        'error', '商品IDが不正です'
+      );
+    END IF;
+
+    IF v_quantity IS NULL OR v_quantity <= 0 THEN
+      RETURN json_build_object(
+        'success', false,
+        'error', '数量は1以上を指定してください'
+      );
+    END IF;
+
+    -- 商品が存在するかチェック
+    IF NOT EXISTS (SELECT 1 FROM products WHERE id = v_product_id AND is_active = true) THEN
+      RETURN json_build_object(
+        'success', false,
+        'error', '存在しない商品が含まれています: ' || v_product_id::TEXT
+      );
+    END IF;
+  END LOOP;
+
+  -- 店舗が存在するかチェック
+  IF NOT EXISTS (SELECT 1 FROM stores WHERE id = p_store_id AND is_active = true) THEN
+    RETURN json_build_object(
+      'success', false,
+      'error', '店舗が存在しません'
+    );
+  END IF;
+
   -- トランザクション内で実行（エラー時は自動ロールバック）
 
   -- 1. 発注を作成
