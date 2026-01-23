@@ -145,6 +145,7 @@ export interface Database {
           supplier: string | null
           notes: string | null
           assigned_staff_id: string | null
+          track_hq_inventory: boolean
           is_active: boolean
           created_at: string
           updated_at: string
@@ -168,6 +169,7 @@ export interface Database {
           supplier?: string | null
           notes?: string | null
           assigned_staff_id?: string | null
+          track_hq_inventory?: boolean
           is_active?: boolean
           created_at?: string
           updated_at?: string
@@ -191,6 +193,7 @@ export interface Database {
           supplier?: string | null
           notes?: string | null
           assigned_staff_id?: string | null
+          track_hq_inventory?: boolean
           is_active?: boolean
           created_at?: string
           updated_at?: string

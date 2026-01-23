@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Search, Plus, Minus, AlertTriangle, Printer, Loader2 } from "lucide-react"
+import { Search, Plus, Minus, AlertTriangle, Printer, Loader2, Settings } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import type { Product, Category, HqInventory } from "@/types/database"
 
@@ -50,6 +50,8 @@ export default function InventoryPage() {
   const [adjustQuantity, setAdjustQuantity] = useState("")
   const [adjustReason, setAdjustReason] = useState("")
   const [isSaving, setIsSaving] = useState(false)
+  const [isThresholdDialogOpen, setIsThresholdDialogOpen] = useState(false)
+  const [thresholdValue, setThresholdValue] = useState("")
 
   const supabase = createClient()
 
@@ -65,6 +67,7 @@ export default function InventoryPage() {
           categories (*)
         `)
         .eq("is_active", true)
+        .eq("track_hq_inventory", true)
         .order("product_name"),
       supabase.from("categories").select("*").order("sort_order"),
     ])
@@ -108,6 +111,56 @@ export default function InventoryPage() {
     setAdjustQuantity("")
     setAdjustReason("")
     setIsAdjustDialogOpen(true)
+  }
+
+  const handleOpenThresholdDialog = (item: InventoryItem) => {
+    setSelectedItem(item)
+    setThresholdValue(String(item.hq_inventory?.threshold ?? 5))
+    setIsThresholdDialogOpen(true)
+  }
+
+  const handleThresholdSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedItem) return
+
+    const threshold = parseInt(thresholdValue)
+    if (isNaN(threshold) || threshold < 0 || threshold > 99999) {
+      alert("閾値は0〜99999の範囲で入力してください")
+      return
+    }
+
+    setIsSaving(true)
+
+    if (selectedItem.hq_inventory) {
+      // 既存の在庫レコードを更新
+      const { error } = await supabase
+        .from("hq_inventory")
+        .update({ threshold })
+        .eq("id", selectedItem.hq_inventory.id)
+
+      if (error) {
+        console.error("Error updating threshold:", error)
+        alert("閾値の更新に失敗しました")
+        setIsSaving(false)
+        return
+      }
+    } else {
+      // 在庫レコードがない場合は新規作成
+      const { error } = await supabase
+        .from("hq_inventory")
+        .insert({ product_id: selectedItem.id, quantity: 0, threshold })
+
+      if (error) {
+        console.error("Error creating inventory:", error)
+        alert("在庫レコードの作成に失敗しました")
+        setIsSaving(false)
+        return
+      }
+    }
+
+    setIsSaving(false)
+    setIsThresholdDialogOpen(false)
+    fetchInventory()
   }
 
   const handleAdjustSubmit = async (e: React.FormEvent) => {
@@ -287,8 +340,17 @@ export default function InventoryPage() {
                       <TableCell className="text-right tabular-nums font-medium">
                         {quantity.toLocaleString()}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums text-muted-foreground">
-                        {threshold}
+                      <TableCell className="text-right tabular-nums">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-auto p-1 text-muted-foreground hover:text-foreground"
+                          onClick={() => handleOpenThresholdDialog(item)}
+                          aria-label="閾値を編集"
+                        >
+                          {threshold}
+                          <Settings className="ml-1 size-3" />
+                        </Button>
                       </TableCell>
                       <TableCell>{getStockBadge(quantity, threshold)}</TableCell>
                       <TableCell className="no-print">
@@ -373,6 +435,47 @@ export default function InventoryPage() {
               <Button type="submit" disabled={isSaving}>
                 {isSaving && <Loader2 className="size-4 animate-spin" />}
                 {adjustType === "in" ? "入庫する" : adjustType === "out" ? "出庫する" : "調整する"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isThresholdDialogOpen} onOpenChange={setIsThresholdDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>アラート閾値の設定</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleThresholdSubmit} className="space-y-4">
+            {selectedItem && (
+              <div className="rounded-md bg-muted p-3">
+                <p className="font-medium">{selectedItem.product_name}</p>
+                <p className="text-sm text-muted-foreground">
+                  現在の閾値: {selectedItem.hq_inventory?.threshold ?? 5}個
+                </p>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="threshold">新しい閾値 *</Label>
+              <Input
+                id="threshold"
+                type="number"
+                min="0"
+                value={thresholdValue}
+                onChange={(e) => setThresholdValue(e.target.value)}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                在庫数がこの値以下になるとアラートが表示されます
+              </p>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsThresholdDialogOpen(false)}>
+                キャンセル
+              </Button>
+              <Button type="submit" disabled={isSaving}>
+                {isSaving && <Loader2 className="size-4 animate-spin" />}
+                保存
               </Button>
             </DialogFooter>
           </form>

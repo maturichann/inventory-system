@@ -28,7 +28,8 @@ import {
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { Plus, Search, Pencil, Trash2, Loader2 } from "lucide-react"
+import { Plus, Search, Pencil, Trash2, Loader2, Package } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
 import { createClient } from "@/lib/supabase/client"
 import type { Product, Category, Maker, Staff } from "@/types/database"
 
@@ -50,6 +51,7 @@ type ProductFormData = {
   supplier: string
   assigned_staff_id: string
   notes: string
+  track_hq_inventory: boolean
 }
 
 const initialFormData: ProductFormData = {
@@ -70,6 +72,7 @@ const initialFormData: ProductFormData = {
   supplier: "",
   assigned_staff_id: "",
   notes: "",
+  track_hq_inventory: true,
 }
 
 export default function ProductsPage() {
@@ -131,6 +134,7 @@ export default function ProductsPage() {
         supplier: product.supplier || "",
         assigned_staff_id: product.assigned_staff_id || "",
         notes: product.notes || "",
+        track_hq_inventory: product.track_hq_inventory ?? true,
       })
     } else {
       setEditingProduct(null)
@@ -167,6 +171,7 @@ export default function ProductsPage() {
       supplier: formData.supplier || null,
       assigned_staff_id: formData.assigned_staff_id || null,
       notes: formData.notes || null,
+      track_hq_inventory: formData.track_hq_inventory,
     }
 
     if (editingProduct) {
@@ -297,6 +302,7 @@ export default function ProductsPage() {
                   <TableHead>カテゴリ</TableHead>
                   <TableHead>メーカー</TableHead>
                   <TableHead className="text-right tabular-nums">単価</TableHead>
+                  <TableHead>本部在庫</TableHead>
                   <TableHead>担当者</TableHead>
                   <TableHead className="w-24">操作</TableHead>
                 </TableRow>
@@ -323,6 +329,16 @@ export default function ProductsPage() {
                     <TableCell>{getMakerName(product.maker_id)}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {product.unit_price.toLocaleString()}円
+                    </TableCell>
+                    <TableCell>
+                      {product.track_hq_inventory ? (
+                        <Badge variant="default" className="bg-blue-500 hover:bg-blue-600">
+                          <Package className="mr-1 size-3" />
+                          管理
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">仕入先</Badge>
+                      )}
                     </TableCell>
                     <TableCell>
                       {product.assigned_staff_id ? (
@@ -530,6 +546,28 @@ export default function ProductsPage() {
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               />
+            </div>
+
+            <div className="flex items-center space-x-2 rounded-md border p-3">
+              <Checkbox
+                id="track_hq_inventory"
+                checked={formData.track_hq_inventory}
+                onCheckedChange={(checked) =>
+                  setFormData({ ...formData, track_hq_inventory: checked === true })
+                }
+              />
+              <div className="grid gap-1.5 leading-none">
+                <Label
+                  htmlFor="track_hq_inventory"
+                  className="flex items-center gap-2 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  <Package className="size-4" />
+                  本部在庫で管理
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  チェックを外すと本部在庫画面に表示されず、常に仕入先対応となります
+                </p>
+              </div>
             </div>
 
             <DialogFooter>
