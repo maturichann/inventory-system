@@ -13,6 +13,7 @@ import {
   Users,
   ShoppingBag,
   BookOpen,
+  History,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -26,6 +27,7 @@ const navigation = [
   { name: "発注管理", href: "/orders", icon: ShoppingCart },
   { name: "購入リスト", href: "/purchasing", icon: ShoppingBag },
   { name: "在庫アラート", href: "/alerts", icon: AlertTriangle },
+  { name: "履歴", href: "/history", icon: History },
   { name: "操作マニュアル", href: "/manual", icon: BookOpen },
 ]
 

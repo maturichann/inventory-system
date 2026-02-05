@@ -72,7 +72,7 @@ const initialFormData: ProductFormData = {
   supplier: "",
   assigned_staff_id: "",
   notes: "",
-  track_hq_inventory: true,
+  track_hq_inventory: false,
 }
 
 export default function ProductsPage() {
