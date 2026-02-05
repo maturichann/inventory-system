@@ -17,9 +17,18 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Plus, Trash2, ShoppingCart, Loader2, Check, Search } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Plus, Trash2, ShoppingCart, Loader2, Check, Search, History, ChevronDown, ChevronRight } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import type { Store, Product, Category } from "@/types/database"
 
@@ -35,26 +44,87 @@ type OrderItem = {
   quantity: number
 }
 
+type OrderHistory = {
+  id: string
+  order_number: string
+  status: string
+  created_at: string
+  items: {
+    product_name: string
+    product_code: string
+    quantity: number
+  }[]
+}
+
 export default function StoreOrderPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params)
   const [store, setStore] = useState<Store | null>(null)
   const [products, setProducts] = useState<ProductWithCategory[]>([])
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
+  const [orderHistory, setOrderHistory] = useState<OrderHistory[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false)
   const [orderNumber, setOrderNumber] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [notFound, setNotFound] = useState(false)
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
+  const [activeTab, setActiveTab] = useState("order")
 
   const supabase = createClient()
+
+  const fetchOrderHistory = async (storeId: string) => {
+    setIsLoadingHistory(true)
+
+    const { data: ordersData, error } = await supabase
+      .from("orders")
+      .select(`
+        id,
+        order_number,
+        status,
+        created_at,
+        order_items (
+          quantity,
+          products (
+            product_name,
+            product_code
+          )
+        )
+      `)
+      .eq("store_id", storeId)
+      .order("created_at", { ascending: false })
+      .limit(50)
+
+    if (error) {
+      console.error("Error fetching order history:", error)
+      setIsLoadingHistory(false)
+      return
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const history: OrderHistory[] = (ordersData || []).map((order: any) => ({
+      id: order.id,
+      order_number: order.order_number,
+      status: order.status,
+      created_at: order.created_at,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      items: (order.order_items || []).map((item: any) => ({
+        product_name: item.products?.product_name || "",
+        product_code: item.products?.product_code || "",
+        quantity: item.quantity,
+      })),
+    }))
+
+    setOrderHistory(history)
+    setIsLoadingHistory(false)
+  }
 
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true)
 
-      // Find store by code
       const { data: storeData, error: storeError } = await supabase
         .from("stores")
         .select("*")
@@ -70,7 +140,6 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
 
       setStore(storeData)
 
-      // Fetch products
       const { data: productsData } = await supabase
         .from("products")
         .select(`*, categories (*)`)
@@ -88,6 +157,13 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code])
 
+  useEffect(() => {
+    if (activeTab === "history" && store && orderHistory.length === 0) {
+      fetchOrderHistory(store.id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, store])
+
   const categories = [...new Set(products.map(p => p.categories?.name).filter(Boolean))]
 
   const filteredProducts = products.filter(product => {
@@ -98,9 +174,7 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
   })
 
   const handleAddProduct = (product: ProductWithCategory) => {
-    // Check if already added
     if (orderItems.some(item => item.product_id === product.id)) {
-      // Increment quantity
       setOrderItems(orderItems.map(item =>
         item.product_id === product.id
           ? { ...item, quantity: item.quantity + 1 }
@@ -137,7 +211,6 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
   const handleSubmitOrder = async () => {
     if (!store || orderItems.length === 0) return
 
-    // 数量バリデーション
     for (const item of orderItems) {
       if (item.quantity < 1 || item.quantity > 99999) {
         alert("数量は1〜99999の範囲で入力してください")
@@ -147,7 +220,6 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
 
     setIsSubmitting(true)
 
-    // RPCでトランザクション処理（発注 + 明細を一括作成）
     const { data, error } = await supabase.rpc("create_order_with_items", {
       p_store_id: store.id,
       p_items: orderItems.map(item => ({
@@ -166,7 +238,7 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
     const result = data as { success: boolean; error?: string; order_number?: string }
 
     if (!result.success) {
-      alert(`発注に失敗しました: ${result.error}`)
+      alert(`発注に失敗しました: \${result.error}`)
       setIsSubmitting(false)
       return
     }
@@ -175,6 +247,42 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
     setIsSuccessDialogOpen(true)
     setOrderItems([])
     setIsSubmitting(false)
+    setOrderHistory([])
+  }
+
+  const toggleOrderExpanded = (orderId: string) => {
+    const newExpanded = new Set(expandedOrders)
+    if (newExpanded.has(orderId)) {
+      newExpanded.delete(orderId)
+    } else {
+      newExpanded.add(orderId)
+    }
+    setExpandedOrders(newExpanded)
+  }
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "pending":
+        return <Badge variant="secondary">受付中</Badge>
+      case "processing":
+        return <Badge variant="default">処理中</Badge>
+      case "completed":
+        return <Badge variant="outline" className="text-green-600 border-green-600">完了</Badge>
+      case "cancelled":
+        return <Badge variant="destructive">キャンセル</Badge>
+      default:
+        return <Badge variant="outline">{status}</Badge>
+    }
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleString("ja-JP", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
   }
 
   if (isLoading) {
@@ -200,9 +308,9 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <div>
             <h1 className="text-xl font-bold">{store?.store_name}</h1>
-            <p className="text-sm text-muted-foreground">発注入力画面</p>
+            <p className="text-sm text-muted-foreground">発注システム</p>
           </div>
-          {orderItems.length > 0 && (
+          {orderItems.length > 0 && activeTab === "order" && (
             <Badge variant="default" className="text-base px-3 py-1">
               <ShoppingCart className="size-4 mr-1" />
               {orderItems.length}点
@@ -212,171 +320,258 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
       </header>
 
       <main className="container mx-auto px-4 py-6">
-        <div className="grid gap-6 lg:grid-cols-3">
-          {/* Product Selection */}
-          <div className="lg:col-span-2 space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>商品を選択</CardTitle>
-                <CardDescription>発注したい商品をクリックしてカートに追加</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      placeholder="商品名・商品コードで検索..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-9"
-                    />
-                  </div>
-                  <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                    <SelectTrigger className="w-full sm:w-48">
-                      <SelectValue placeholder="カテゴリ" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">すべて</SelectItem>
-                      {categories.map((cat) => (
-                        <SelectItem key={cat} value={cat!}>
-                          {cat}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="grid w-full max-w-md grid-cols-2">
+            <TabsTrigger value="order" className="flex items-center gap-2">
+              <ShoppingCart className="size-4" />
+              新規発注
+            </TabsTrigger>
+            <TabsTrigger value="history" className="flex items-center gap-2">
+              <History className="size-4" />
+              発注履歴
+            </TabsTrigger>
+          </TabsList>
 
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {filteredProducts.length === 0 ? (
-                    <p className="col-span-2 py-8 text-center text-muted-foreground">
-                      商品が見つかりません
-                    </p>
-                  ) : (
-                    filteredProducts.map((product) => {
-                      const inCart = orderItems.find(item => item.product_id === product.id)
-                      return (
-                        <button
-                          key={product.id}
-                          onClick={() => handleAddProduct(product)}
-                          className={`flex items-center justify-between rounded-lg border p-3 text-left transition-colors hover:bg-accent ${
-                            inCart ? "border-primary bg-primary/5" : ""
-                          }`}
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="font-medium truncate">{product.product_name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {product.product_code} / {product.categories?.name || "-"}
-                            </p>
-                          </div>
-                          {inCart ? (
-                            <Badge variant="default" className="ml-2 shrink-0">
-                              {inCart.quantity}
-                            </Badge>
-                          ) : (
-                            <Plus className="ml-2 size-4 shrink-0 text-muted-foreground" />
-                          )}
-                        </button>
-                      )
-                    })
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          <TabsContent value="order">
+            <div className="grid gap-6 lg:grid-cols-3">
+              <div className="lg:col-span-2 space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>商品を選択</CardTitle>
+                    <CardDescription>発注したい商品をクリックしてカートに追加</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          placeholder="商品名・商品コードで検索..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="pl-9"
+                        />
+                      </div>
+                      <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                        <SelectTrigger className="w-full sm:w-48">
+                          <SelectValue placeholder="カテゴリ" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">すべて</SelectItem>
+                          {categories.map((cat) => (
+                            <SelectItem key={cat} value={cat!}>
+                              {cat}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-          {/* Order Cart */}
-          <div className="space-y-4">
-            <Card className="sticky top-4">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <ShoppingCart className="size-5" />
-                  発注内容
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {orderItems.length === 0 ? (
-                  <p className="py-8 text-center text-muted-foreground">
-                    商品を選択してください
-                  </p>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      {orderItems.map((item) => (
-                        <div
-                          key={item.product_id}
-                          className="flex items-center gap-2 rounded-md border p-2"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium truncate">{item.product_name}</p>
-                            <p className="text-xs text-muted-foreground">{item.product_code}</p>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="size-7"
-                              onClick={() => handleUpdateQuantity(item.product_id, item.quantity - 1)}
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {filteredProducts.length === 0 ? (
+                        <p className="col-span-2 py-8 text-center text-muted-foreground">
+                          商品が見つかりません
+                        </p>
+                      ) : (
+                        filteredProducts.map((product) => {
+                          const inCart = orderItems.find(item => item.product_id === product.id)
+                          return (
+                            <button
+                              key={product.id}
+                              onClick={() => handleAddProduct(product)}
+                              className={`flex items-center justify-between rounded-lg border p-3 text-left transition-colors hover:bg-accent \${
+                                inCart ? "border-primary bg-primary/5" : ""
+                              }`}
                             >
-                              -
-                            </Button>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={item.quantity}
-                              onChange={(e) => handleUpdateQuantity(item.product_id, parseInt(e.target.value) || 0)}
-                              className="w-14 text-center h-7"
-                            />
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="size-7"
-                              onClick={() => handleUpdateQuantity(item.product_id, item.quantity + 1)}
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium truncate">{product.product_name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {product.product_code} / {product.categories?.name || "-"}
+                                </p>
+                              </div>
+                              {inCart ? (
+                                <Badge variant="default" className="ml-2 shrink-0">
+                                  {inCart.quantity}
+                                </Badge>
+                              ) : (
+                                <Plus className="ml-2 size-4 shrink-0 text-muted-foreground" />
+                              )}
+                            </button>
+                          )
+                        })
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="space-y-4">
+                <Card className="sticky top-4">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <ShoppingCart className="size-5" />
+                      発注内容
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {orderItems.length === 0 ? (
+                      <p className="py-8 text-center text-muted-foreground">
+                        商品を選択してください
+                      </p>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          {orderItems.map((item) => (
+                            <div
+                              key={item.product_id}
+                              className="flex items-center gap-2 rounded-md border p-2"
                             >
-                              +
-                            </Button>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium truncate">{item.product_name}</p>
+                                <p className="text-xs text-muted-foreground">{item.product_code}</p>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="size-7"
+                                  onClick={() => handleUpdateQuantity(item.product_id, item.quantity - 1)}
+                                >
+                                  -
+                                </Button>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  value={item.quantity}
+                                  onChange={(e) => handleUpdateQuantity(item.product_id, parseInt(e.target.value) || 0)}
+                                  className="w-14 text-center h-7"
+                                />
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="size-7"
+                                  onClick={() => handleUpdateQuantity(item.product_id, item.quantity + 1)}
+                                >
+                                  +
+                                </Button>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-7 text-destructive"
+                                onClick={() => handleRemoveItem(item.product_id)}
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="border-t pt-4">
+                          <div className="flex justify-between text-sm mb-4">
+                            <span className="text-muted-foreground">合計点数</span>
+                            <span className="font-bold">
+                              {orderItems.reduce((sum, item) => sum + item.quantity, 0)}点
+                            </span>
                           </div>
                           <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-7 text-destructive"
-                            onClick={() => handleRemoveItem(item.product_id)}
+                            className="w-full"
+                            size="lg"
+                            onClick={handleSubmitOrder}
+                            disabled={isSubmitting}
                           >
-                            <Trash2 className="size-4" />
+                            {isSubmitting ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              <ShoppingCart className="size-4" />
+                            )}
+                            発注を送信
                           </Button>
                         </div>
-                      ))}
-                    </div>
-
-                    <div className="border-t pt-4">
-                      <div className="flex justify-between text-sm mb-4">
-                        <span className="text-muted-foreground">合計点数</span>
-                        <span className="font-bold">
-                          {orderItems.reduce((sum, item) => sum + item.quantity, 0)}点
-                        </span>
                       </div>
-                      <Button
-                        className="w-full"
-                        size="lg"
-                        onClick={handleSubmitOrder}
-                        disabled={isSubmitting}
-                      >
-                        {isSubmitting ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : (
-                          <ShoppingCart className="size-4" />
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="history">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <History className="size-5" />
+                  発注履歴
+                </CardTitle>
+                <CardDescription>この店舗の発注履歴（直近50件）</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {isLoadingHistory ? (
+                  <div className="flex h-32 items-center justify-center">
+                    <Loader2 className="size-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : orderHistory.length === 0 ? (
+                  <div className="flex h-32 flex-col items-center justify-center text-muted-foreground gap-2">
+                    <History className="size-8" />
+                    <p className="text-sm">発注履歴がありません</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {orderHistory.map((order) => (
+                      <div key={order.id} className="border rounded-lg">
+                        <button
+                          onClick={() => toggleOrderExpanded(order.id)}
+                          className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
+                        >
+                          <div className="flex items-center gap-4">
+                            {expandedOrders.has(order.id) ? (
+                              <ChevronDown className="size-4" />
+                            ) : (
+                              <ChevronRight className="size-4" />
+                            )}
+                            <div className="text-left">
+                              <p className="font-mono font-medium">{order.order_number}</p>
+                              <p className="text-sm text-muted-foreground">{formatDate(order.created_at)}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm text-muted-foreground">
+                              {order.items.length}商品
+                            </span>
+                            {getStatusBadge(order.status)}
+                          </div>
+                        </button>
+                        {expandedOrders.has(order.id) && (
+                          <div className="border-t px-4 pb-4">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>商品コード</TableHead>
+                                  <TableHead>商品名</TableHead>
+                                  <TableHead className="text-right">数量</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {order.items.map((item, idx) => (
+                                  <TableRow key={idx}>
+                                    <TableCell className="font-mono text-sm">{item.product_code}</TableCell>
+                                    <TableCell>{item.product_name}</TableCell>
+                                    <TableCell className="text-right">{item.quantity}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
                         )}
-                        発注を送信
-                      </Button>
-                    </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </CardContent>
             </Card>
-          </div>
-        </div>
+          </TabsContent>
+        </Tabs>
       </main>
 
-      {/* Success Dialog */}
       <Dialog open={isSuccessDialogOpen} onOpenChange={setIsSuccessDialogOpen}>
         <DialogContent>
           <DialogHeader>
