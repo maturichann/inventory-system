@@ -118,7 +118,7 @@ export default function PurchasingPage() {
             assigned_staff_id,
             makers (
               id,
-              name
+              maker_name
             ),
             categories (
               id,
@@ -166,7 +166,7 @@ export default function PurchasingPage() {
         product_code: string
         product_name: string
         assigned_staff_id: string | null
-        makers: { id: string; name: string } | null
+        makers: { id: string; maker_name: string } | null
         categories: { id: string; name: string } | null
         staff: { id: string; name: string } | null
       }
@@ -178,7 +178,7 @@ export default function PurchasingPage() {
         quantity: item.quantity,
         product_code: product?.product_code || "",
         product_name: product?.product_name || "",
-        maker_name: product?.makers?.name || "未設定",
+        maker_name: product?.makers?.maker_name || "未設定",
         maker_id: product?.makers?.id || "unknown",
         category_name: product?.categories?.name || "-",
         store_name: order?.stores?.store_name || "",
