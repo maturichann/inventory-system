@@ -100,6 +100,7 @@ export default function PurchasingPage() {
           order_id,
           product_id,
           quantity,
+          fulfilled_from,
           orders!inner (
             id,
             order_number,
@@ -128,9 +129,7 @@ export default function PurchasingPage() {
               name
             )
           )
-        `)
-        .in("orders.status", ["pending", "processing"])
-        .or("fulfilled_from.eq.supplier,fulfilled_from.is.null"),
+        `),
       supabase
         .from("hq_inventory")
         .select("product_id, quantity")
@@ -147,8 +146,15 @@ export default function PurchasingPage() {
       setHqInventory(inventoryResult.data)
     }
 
-    // Transform data
-    const items: OrderItemWithDetails[] = (ordersResult.data || []).map((item) => {
+    // Filter and transform data
+    const items: OrderItemWithDetails[] = (ordersResult.data || [])
+      .filter((item: any) => {
+        const status = item.orders?.status
+        const isActiveOrder = status === "pending" || status === "processing"
+        const isSupplierItem = item.fulfilled_from === "supplier" || item.fulfilled_from === null
+        return isActiveOrder && isSupplierItem
+      })
+      .map((item) => {
       const order = item.orders as unknown as {
         id: string
         order_number: string
