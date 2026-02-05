@@ -9,7 +9,8 @@ interface MainLayoutProps {
 
 export function MainLayout({ children }: MainLayoutProps) {
   const pathname = usePathname()
-  const isStorePage = pathname?.startsWith("/store")
+  // /store/[code] のみマッチ（/stores は除外）
+  const isStorePage = pathname?.startsWith("/store/")
 
   if (isStorePage) {
     return (
