@@ -21,6 +21,16 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -28,6 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Plus, Search, Eye, Check, Printer, Package, Loader2, Trash2 } from "lucide-react"
 import { formatDate, formatDateTime } from "@/lib/utils"
@@ -65,6 +76,11 @@ export default function OrdersPage() {
   const [newOrderStoreId, setNewOrderStoreId] = useState("")
   const [newOrderStaffId, setNewOrderStaffId] = useState("")
   const [orderItems, setOrderItems] = useState<{ product_id: string; quantity: number }[]>([])
+  
+  // 選択状態の管理
+  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set())
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
   const supabase = createClient()
 
@@ -124,6 +140,63 @@ export default function OrdersPage() {
     return matchesSearch && matchesStatus
   })
 
+  // 選択切り替え
+  const toggleOrderSelection = (orderId: string) => {
+    const newSelected = new Set(selectedOrders)
+    if (newSelected.has(orderId)) {
+      newSelected.delete(orderId)
+    } else {
+      newSelected.add(orderId)
+    }
+    setSelectedOrders(newSelected)
+  }
+
+  // 全選択/全解除
+  const toggleAllOrders = () => {
+    if (selectedOrders.size === filteredOrders.length) {
+      setSelectedOrders(new Set())
+    } else {
+      setSelectedOrders(new Set(filteredOrders.map(o => o.id)))
+    }
+  }
+
+  // 選択した発注を削除
+  const deleteSelectedOrders = async () => {
+    setIsDeleting(true)
+    
+    // まず関連するorder_itemsを削除
+    const { error: itemsError } = await supabase
+      .from("order_items")
+      .delete()
+      .in("order_id", Array.from(selectedOrders))
+    
+    if (itemsError) {
+      console.error("Error deleting order items:", itemsError)
+      alert("発注明細の削除に失敗しました")
+      setIsDeleting(false)
+      return
+    }
+
+    // 次にordersを削除
+    const { error: ordersError } = await supabase
+      .from("orders")
+      .delete()
+      .in("id", Array.from(selectedOrders))
+
+    if (ordersError) {
+      console.error("Error deleting orders:", ordersError)
+      alert("発注の削除に失敗しました")
+      setIsDeleting(false)
+      return
+    }
+
+    // 成功したらリストを更新
+    setOrders(orders.filter(o => !selectedOrders.has(o.id)))
+    setSelectedOrders(new Set())
+    setIsDeleting(false)
+    setShowDeleteDialog(false)
+  }
+
   const pendingCount = orders.filter(o => o.status === "pending").length
   const processingCount = orders.filter(o => o.status === "processing").length
 
@@ -148,7 +221,6 @@ export default function OrdersPage() {
   const handleProcessOrder = async (order: OrderWithDetails) => {
     setIsSaving(true)
 
-    // Auto-assign staff based on product types and HQ stock
     const hasExtension = order.order_items.some(item =>
       item.products?.product_code?.startsWith("EXT")
     )
@@ -157,7 +229,6 @@ export default function OrdersPage() {
       return hqStock >= item.quantity
     })
 
-    // Find staff by name pattern (浅野 for HQ stock, 金本 for supplier orders on extensions)
     let assignedStaffId: string | null = null
     if (hasExtension && !allHaveHqStock) {
       const kanemoto = staffList.find(s => s.name.includes("金本"))
@@ -180,10 +251,9 @@ export default function OrdersPage() {
       console.error("Error processing order:", error)
       alert("処理開始に失敗しました")
       setIsSaving(false)
-      return // エラー時は明細更新をスキップ
+      return
     }
 
-    // Update order items with fulfillment source and HQ stock at order time
     for (const item of order.order_items) {
       const hqStock = item.products?.hq_inventory?.quantity ?? 0
       const fulfilledFrom = hqStock >= item.quantity ? "hq" : "supplier"
@@ -192,7 +262,7 @@ export default function OrdersPage() {
         .from("order_items")
         .update({
           fulfilled_from: fulfilledFrom,
-          hq_stock_at_order: hqStock,  // 処理開始時の本部在庫を記録
+          hq_stock_at_order: hqStock,
         })
         .eq("id", item.id)
     }
@@ -204,7 +274,6 @@ export default function OrdersPage() {
   const handleCompleteOrder = async (order: OrderWithDetails) => {
     setIsSaving(true)
 
-    // RPCでトランザクション処理（在庫更新 + 履歴記録 + ステータス更新を一括）
     const { data, error } = await supabase.rpc("complete_order", {
       p_order_id: order.id,
     })
@@ -219,7 +288,7 @@ export default function OrdersPage() {
     const result = data as { success: boolean; error?: string; order_number?: string }
 
     if (!result.success) {
-      alert(`完了処理に失敗しました: ${result.error}`)
+      alert(`完了処理に失敗しました: \${result.error}`)
       setIsSaving(false)
       return
     }
@@ -233,7 +302,6 @@ export default function OrdersPage() {
     e.preventDefault()
     if (!newOrderStoreId || orderItems.length === 0) return
 
-    // 数量バリデーション
     for (const item of orderItems) {
       if (item.quantity < 1 || item.quantity > 99999) {
         alert("数量は1〜99999の範囲で入力してください")
@@ -243,10 +311,8 @@ export default function OrdersPage() {
 
     setIsSaving(true)
 
-    // "auto" の場合は null として扱う（自動割当は処理開始時に行う）
     const staffId = newOrderStaffId && newOrderStaffId !== "auto" ? newOrderStaffId : null
 
-    // RPCでトランザクション処理（発注 + 明細を一括作成）
     const { data, error } = await supabase.rpc("create_order_with_items", {
       p_store_id: newOrderStoreId,
       p_items: orderItems.map(item => ({
@@ -266,7 +332,7 @@ export default function OrdersPage() {
     const result = data as { success: boolean; error?: string; order_number?: string }
 
     if (!result.success) {
-      alert(`発注作成に失敗しました: ${result.error}`)
+      alert(`発注作成に失敗しました: \${result.error}`)
       setIsSaving(false)
       return
     }
@@ -301,6 +367,16 @@ export default function OrdersPage() {
           </p>
         </div>
         <div className="flex gap-2 no-print">
+          {selectedOrders.size > 0 && (
+            <Button
+              variant="destructive"
+              onClick={() => setShowDeleteDialog(true)}
+              disabled={isDeleting}
+            >
+              <Trash2 className="size-4" />
+              {selectedOrders.size}件を削除
+            </Button>
+          )}
           <Button variant="outline" onClick={handlePrint}>
             <Printer className="size-4" />
             印刷
@@ -385,6 +461,12 @@ export default function OrdersPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-12 no-print">
+                    <Checkbox
+                      checked={selectedOrders.size === filteredOrders.length && filteredOrders.length > 0}
+                      onCheckedChange={toggleAllOrders}
+                    />
+                  </TableHead>
                   <TableHead>発注番号</TableHead>
                   <TableHead>店舗</TableHead>
                   <TableHead>商品数</TableHead>
@@ -396,7 +478,16 @@ export default function OrdersPage() {
               </TableHeader>
               <TableBody>
                 {filteredOrders.map((order) => (
-                  <TableRow key={order.id}>
+                  <TableRow 
+                    key={order.id}
+                    className={selectedOrders.has(order.id) ? "bg-muted/50" : ""}
+                  >
+                    <TableCell className="no-print">
+                      <Checkbox
+                        checked={selectedOrders.has(order.id)}
+                        onCheckedChange={() => toggleOrderSelection(order.id)}
+                      />
+                    </TableCell>
                     <TableCell className="font-mono text-sm">{order.order_number}</TableCell>
                     <TableCell className="font-medium">{order.stores?.store_name || "-"}</TableCell>
                     <TableCell className="tabular-nums">{order.order_items.length}点</TableCell>
@@ -445,6 +536,7 @@ export default function OrdersPage() {
         </CardContent>
       </Card>
 
+      {/* 詳細ダイアログ */}
       <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -525,6 +617,7 @@ export default function OrdersPage() {
         </DialogContent>
       </Dialog>
 
+      {/* 新規発注ダイアログ */}
       <Dialog open={isNewOrderDialogOpen} onOpenChange={setIsNewOrderDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -643,6 +736,35 @@ export default function OrdersPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* 削除確認ダイアログ */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>削除の確認</AlertDialogTitle>
+            <AlertDialogDescription>
+              選択した {selectedOrders.size} 件の発注を削除しますか？
+              <br />
+              関連する発注明細も一緒に削除されます。この操作は取り消せません。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={deleteSelectedOrders}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? (
+                <Loader2 className="size-4 animate-spin mr-1" />
+              ) : (
+                <Trash2 className="size-4 mr-1" />
+              )}
+              削除する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

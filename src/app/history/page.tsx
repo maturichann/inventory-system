@@ -16,10 +16,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Loader2, Package, ShoppingCart, ArrowUp, ArrowDown, RefreshCw } from "lucide-react"
+import { Loader2, Package, ShoppingCart, ArrowUp, ArrowDown, RefreshCw, Trash2 } from "lucide-react"
 import { formatDateTime } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import type { Order, Store, InventoryHistory, Product } from "@/types/database"
@@ -39,6 +51,13 @@ export default function HistoryPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [storeFilter, setStoreFilter] = useState<string>("all")
   const [activeTab, setActiveTab] = useState("orders")
+  
+  // 選択状態の管理
+  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set())
+  const [selectedHistory, setSelectedHistory] = useState<Set<string>>(new Set())
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<"orders" | "history">("orders")
 
   const supabase = createClient()
 
@@ -75,6 +94,119 @@ export default function HistoryPage() {
     if (storeFilter === "all") return true
     return order.store_id === storeFilter
   })
+
+  // 発注の選択切り替え
+  const toggleOrderSelection = (orderId: string) => {
+    const newSelected = new Set(selectedOrders)
+    if (newSelected.has(orderId)) {
+      newSelected.delete(orderId)
+    } else {
+      newSelected.add(orderId)
+    }
+    setSelectedOrders(newSelected)
+  }
+
+  // 全選択/全解除（発注）
+  const toggleAllOrders = () => {
+    if (selectedOrders.size === filteredOrders.length) {
+      setSelectedOrders(new Set())
+    } else {
+      setSelectedOrders(new Set(filteredOrders.map(o => o.id)))
+    }
+  }
+
+  // 在庫履歴の選択切り替え
+  const toggleHistorySelection = (historyId: string) => {
+    const newSelected = new Set(selectedHistory)
+    if (newSelected.has(historyId)) {
+      newSelected.delete(historyId)
+    } else {
+      newSelected.add(historyId)
+    }
+    setSelectedHistory(newSelected)
+  }
+
+  // 全選択/全解除（在庫履歴）
+  const toggleAllHistory = () => {
+    if (selectedHistory.size === inventoryHistory.length) {
+      setSelectedHistory(new Set())
+    } else {
+      setSelectedHistory(new Set(inventoryHistory.map(h => h.id)))
+    }
+  }
+
+  // 削除確認ダイアログを開く
+  const openDeleteDialog = (target: "orders" | "history") => {
+    setDeleteTarget(target)
+    setShowDeleteDialog(true)
+  }
+
+  // 選択した発注を削除
+  const deleteSelectedOrders = async () => {
+    setIsDeleting(true)
+    
+    // まず関連するorder_itemsを削除
+    const { error: itemsError } = await supabase
+      .from("order_items")
+      .delete()
+      .in("order_id", Array.from(selectedOrders))
+    
+    if (itemsError) {
+      console.error("Error deleting order items:", itemsError)
+      alert("発注明細の削除に失敗しました")
+      setIsDeleting(false)
+      return
+    }
+
+    // 次にordersを削除
+    const { error: ordersError } = await supabase
+      .from("orders")
+      .delete()
+      .in("id", Array.from(selectedOrders))
+
+    if (ordersError) {
+      console.error("Error deleting orders:", ordersError)
+      alert("発注の削除に失敗しました")
+      setIsDeleting(false)
+      return
+    }
+
+    // 成功したらリストを更新
+    setOrders(orders.filter(o => !selectedOrders.has(o.id)))
+    setSelectedOrders(new Set())
+    setIsDeleting(false)
+    setShowDeleteDialog(false)
+  }
+
+  // 選択した在庫履歴を削除
+  const deleteSelectedHistory = async () => {
+    setIsDeleting(true)
+
+    const { error } = await supabase
+      .from("inventory_history")
+      .delete()
+      .in("id", Array.from(selectedHistory))
+
+    if (error) {
+      console.error("Error deleting inventory history:", error)
+      alert("在庫履歴の削除に失敗しました")
+      setIsDeleting(false)
+      return
+    }
+
+    setInventoryHistory(inventoryHistory.filter(h => !selectedHistory.has(h.id)))
+    setSelectedHistory(new Set())
+    setIsDeleting(false)
+    setShowDeleteDialog(false)
+  }
+
+  const handleDelete = () => {
+    if (deleteTarget === "orders") {
+      deleteSelectedOrders()
+    } else {
+      deleteSelectedHistory()
+    }
+  }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -145,19 +277,32 @@ export default function HistoryPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg">発注履歴</CardTitle>
-                <Select value={storeFilter} onValueChange={setStoreFilter}>
-                  <SelectTrigger className="w-48">
-                    <SelectValue placeholder="店舗で絞り込み" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">すべての店舗</SelectItem>
-                    {stores.map((store) => (
-                      <SelectItem key={store.id} value={store.id}>
-                        {store.store_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-3">
+                  {selectedOrders.size > 0 && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => openDeleteDialog("orders")}
+                      disabled={isDeleting}
+                    >
+                      <Trash2 className="size-4 mr-1" />
+                      {selectedOrders.size}件を削除
+                    </Button>
+                  )}
+                  <Select value={storeFilter} onValueChange={setStoreFilter}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="店舗で絞り込み" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">すべての店舗</SelectItem>
+                      {stores.map((store) => (
+                        <SelectItem key={store.id} value={store.id}>
+                          {store.store_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -173,6 +318,12 @@ export default function HistoryPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-12">
+                        <Checkbox
+                          checked={selectedOrders.size === filteredOrders.length && filteredOrders.length > 0}
+                          onCheckedChange={toggleAllOrders}
+                        />
+                      </TableHead>
                       <TableHead>発注番号</TableHead>
                       <TableHead>店舗</TableHead>
                       <TableHead>発注日</TableHead>
@@ -182,7 +333,16 @@ export default function HistoryPage() {
                   </TableHeader>
                   <TableBody>
                     {filteredOrders.map((order) => (
-                      <TableRow key={order.id}>
+                      <TableRow 
+                        key={order.id}
+                        className={selectedOrders.has(order.id) ? "bg-muted/50" : ""}
+                      >
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedOrders.has(order.id)}
+                            onCheckedChange={() => toggleOrderSelection(order.id)}
+                          />
+                        </TableCell>
                         <TableCell className="font-mono text-sm">
                           {order.order_number}
                         </TableCell>
@@ -204,7 +364,20 @@ export default function HistoryPage() {
         <TabsContent value="inventory" className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">在庫変動履歴</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">在庫変動履歴</CardTitle>
+                {selectedHistory.size > 0 && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => openDeleteDialog("history")}
+                    disabled={isDeleting}
+                  >
+                    <Trash2 className="size-4 mr-1" />
+                    {selectedHistory.size}件を削除
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {isLoading ? (
@@ -219,6 +392,12 @@ export default function HistoryPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-12">
+                        <Checkbox
+                          checked={selectedHistory.size === inventoryHistory.length && inventoryHistory.length > 0}
+                          onCheckedChange={toggleAllHistory}
+                        />
+                      </TableHead>
                       <TableHead>日時</TableHead>
                       <TableHead>商品</TableHead>
                       <TableHead>種別</TableHead>
@@ -230,7 +409,16 @@ export default function HistoryPage() {
                   </TableHeader>
                   <TableBody>
                     {inventoryHistory.map((history) => (
-                      <TableRow key={history.id}>
+                      <TableRow 
+                        key={history.id}
+                        className={selectedHistory.has(history.id) ? "bg-muted/50" : ""}
+                      >
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedHistory.has(history.id)}
+                            onCheckedChange={() => toggleHistorySelection(history.id)}
+                          />
+                        </TableCell>
                         <TableCell className="text-sm">
                           {formatDateTime(history.created_at)}
                         </TableCell>
@@ -270,6 +458,45 @@ export default function HistoryPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* 削除確認ダイアログ */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>削除の確認</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget === "orders" ? (
+                <>
+                  選択した {selectedOrders.size} 件の発注を削除しますか？
+                  <br />
+                  関連する発注明細も一緒に削除されます。この操作は取り消せません。
+                </>
+              ) : (
+                <>
+                  選択した {selectedHistory.size} 件の在庫履歴を削除しますか？
+                  <br />
+                  この操作は取り消せません。
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? (
+                <Loader2 className="size-4 animate-spin mr-1" />
+              ) : (
+                <Trash2 className="size-4 mr-1" />
+              )}
+              削除する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
