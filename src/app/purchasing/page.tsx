@@ -130,7 +130,7 @@ export default function PurchasingPage() {
           )
         `)
         .in("orders.status", ["pending", "processing"])
-        .eq("fulfilled_from", "supplier"),
+        .or("fulfilled_from.eq.supplier,fulfilled_from.is.null"),
       supabase
         .from("hq_inventory")
         .select("product_id, quantity")

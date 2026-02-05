@@ -20,6 +20,9 @@ DECLARE
   v_item JSONB;
   v_product_id UUID;
   v_quantity INT;
+  v_hq_stock INT;
+  v_track_hq BOOLEAN;
+  v_fulfilled_from VARCHAR(50);
 BEGIN
   -- バリデーション: 明細が空でないこと
   IF p_items IS NULL OR jsonb_array_length(p_items) = 0 THEN
@@ -78,14 +81,39 @@ BEGIN
   )
   RETURNING id, order_number INTO v_order_id, v_order_number;
 
-  -- 2. 発注明細を作成
+  -- 2. 発注明細を作成（fulfilled_fromを自動判定）
   FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
   LOOP
-    INSERT INTO order_items (order_id, product_id, quantity)
+    v_product_id := (v_item->>'product_id')::UUID;
+    v_quantity := (v_item->>'quantity')::INT;
+
+    -- 商品の本部在庫管理フラグを取得
+    SELECT COALESCE(track_hq_inventory, true) INTO v_track_hq
+    FROM products WHERE id = v_product_id;
+
+    -- 本部在庫数を取得
+    SELECT COALESCE(quantity, 0) INTO v_hq_stock
+    FROM hq_inventory WHERE product_id = v_product_id;
+
+    -- fulfilled_fromを判定
+    -- track_hq_inventory = false → 常に仕入先
+    -- 本部在庫 >= 発注数 → 本部在庫から
+    -- それ以外 → 仕入先
+    IF v_track_hq = false THEN
+      v_fulfilled_from := 'supplier';
+    ELSIF v_hq_stock >= v_quantity THEN
+      v_fulfilled_from := 'hq';
+    ELSE
+      v_fulfilled_from := 'supplier';
+    END IF;
+
+    INSERT INTO order_items (order_id, product_id, quantity, hq_stock_at_order, fulfilled_from)
     VALUES (
       v_order_id,
-      (v_item->>'product_id')::UUID,
-      (v_item->>'quantity')::INT
+      v_product_id,
+      v_quantity,
+      v_hq_stock,
+      v_fulfilled_from
     );
   END LOOP;
 
