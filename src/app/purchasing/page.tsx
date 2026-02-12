@@ -41,12 +41,20 @@ type OrderItemWithDetails = {
   store_name: string
   store_code: string
   order_number: string
-  default_staff_name: string | null // 商品に設定された担当者
+  default_staff_name: string | null
 }
 
 type HqInventory = {
   product_id: string
   quantity: number
+}
+
+type StoreInfo = {
+  store_name: string
+  store_code: string
+  order_number: string
+  quantity: number
+  checkKey: string // product_id_store_code
 }
 
 type ProductSummary = {
@@ -57,15 +65,9 @@ type ProductSummary = {
   maker_id: string
   category_name: string
   total_quantity: number
-  stores: {
-    store_name: string
-    store_code: string
-    order_number: string
-    quantity: number
-  }[]
-  isPurchased: boolean
-  assignedStaff: string // 担当者名
-  defaultStaffName: string | null // 商品に設定されたデフォルト担当者
+  stores: StoreInfo[]
+  assignedStaff: string
+  defaultStaffName: string | null
   hqStock: number
 }
 
@@ -83,7 +85,8 @@ export default function PurchasingPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedMaker, setSelectedMaker] = useState<string>("all")
   const [selectedStaff, setSelectedStaff] = useState<string>("all")
-  const [purchasedItems, setPurchasedItems] = useState<Set<string>>(new Set())
+  // 店舗ごとのチェック状態（キー: product_id_store_code）
+  const [checkedStores, setCheckedStores] = useState<Set<string>>(new Set())
   const [openMakers, setOpenMakers] = useState<Set<string>>(new Set())
 
   const supabase = createClient()
@@ -91,7 +94,6 @@ export default function PurchasingPage() {
   const fetchOrderItems = async () => {
     setIsLoading(true)
 
-    // Fetch pending orders with all details
     const [ordersResult, inventoryResult] = await Promise.all([
       supabase
         .from("order_items")
@@ -141,13 +143,13 @@ export default function PurchasingPage() {
       return
     }
 
-    // Set HQ inventory
     if (inventoryResult.data) {
       setHqInventory(inventoryResult.data)
     }
 
-    // Filter and transform data
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const items: OrderItemWithDetails[] = (ordersResult.data || [])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .filter((item: any) => {
         const status = item.orders?.status
         const isActiveOrder = status === "pending" || status === "processing"
@@ -190,22 +192,17 @@ export default function PurchasingPage() {
 
     setOrderItems(items)
 
-    // Open all makers by default
     const makerIds = new Set(items.map(item => item.maker_id))
     setOpenMakers(makerIds)
 
     setIsLoading(false)
   }
 
-  // Get HQ stock for a product
   const getHqStock = (productId: string): number => {
     const inv = hqInventory.find(i => i.product_id === productId)
     return inv?.quantity || 0
   }
 
-  // Determine assigned staff based on HQ stock and product's default staff
-  // - 本部在庫あり → 浅野さん（商品担当に関わらず）
-  // - 本部在庫なし → 商品の担当者設定に従う
   const getAssignedStaff = (productId: string, defaultStaffName: string | null): string => {
     const stock = getHqStock(productId)
     if (stock > 0) {
@@ -222,6 +219,7 @@ export default function PurchasingPage() {
   // Group by product and aggregate
   const productSummaries: ProductSummary[] = orderItems.reduce((acc, item) => {
     const existing = acc.find(p => p.product_id === item.product_id)
+    const checkKey = `\${item.product_id}_\${item.store_code}`
 
     if (existing) {
       existing.total_quantity += item.quantity
@@ -234,6 +232,7 @@ export default function PurchasingPage() {
           store_code: item.store_code,
           order_number: item.order_number,
           quantity: item.quantity,
+          checkKey: checkKey,
         })
       }
     } else {
@@ -251,8 +250,8 @@ export default function PurchasingPage() {
           store_code: item.store_code,
           order_number: item.order_number,
           quantity: item.quantity,
+          checkKey: checkKey,
         }],
-        isPurchased: purchasedItems.has(item.product_id),
         assignedStaff: getAssignedStaff(item.product_id, item.default_staff_name),
         defaultStaffName: item.default_staff_name,
         hqStock: hqStock,
@@ -262,9 +261,8 @@ export default function PurchasingPage() {
     return acc
   }, [] as ProductSummary[])
 
-  // Apply purchased status and update staff assignment
+  // Update hqStock and assignedStaff
   productSummaries.forEach(p => {
-    p.isPurchased = purchasedItems.has(p.product_id)
     p.hqStock = getHqStock(p.product_id)
     p.assignedStaff = getAssignedStaff(p.product_id, p.defaultStaffName)
   })
@@ -296,10 +294,8 @@ export default function PurchasingPage() {
     return acc
   }, [] as MakerGroup[])
 
-  // Sort by maker name
   makerGroups.sort((a, b) => a.maker_name.localeCompare(b.maker_name, "ja"))
 
-  // Get unique makers for filter
   const makers = [...new Set(productSummaries.map(p => ({ id: p.maker_id, name: p.maker_name })))]
     .filter((m, i, arr) => arr.findIndex(x => x.id === m.id) === i)
     .sort((a, b) => a.name.localeCompare(b.name, "ja"))
@@ -314,21 +310,30 @@ export default function PurchasingPage() {
     setOpenMakers(newOpen)
   }
 
-  const togglePurchased = (productId: string) => {
-    const newPurchased = new Set(purchasedItems)
-    if (newPurchased.has(productId)) {
-      newPurchased.delete(productId)
+  // 店舗ごとのチェック切り替え
+  const toggleStoreCheck = (checkKey: string) => {
+    const newChecked = new Set(checkedStores)
+    if (newChecked.has(checkKey)) {
+      newChecked.delete(checkKey)
     } else {
-      newPurchased.add(productId)
+      newChecked.add(checkKey)
     }
-    setPurchasedItems(newPurchased)
+    setCheckedStores(newChecked)
+  }
+
+  // 商品の全店舗がチェック済みかどうか
+  const isProductAllChecked = (product: ProductSummary): boolean => {
+    return product.stores.every(s => checkedStores.has(s.checkKey))
   }
 
   // Get unique staff names for filter
   const uniqueStaffNames = [...new Set(productSummaries.map(p => p.assignedStaff))].sort()
 
-  const totalProducts = filteredProducts.length
-  const purchasedCount = filteredProducts.filter(p => purchasedItems.has(p.product_id)).length
+  // 全店舗数と完了店舗数をカウント
+  const totalStoreOrders = filteredProducts.reduce((sum, p) => sum + p.stores.length, 0)
+  const checkedStoreOrders = filteredProducts.reduce((sum, p) => 
+    sum + p.stores.filter(s => checkedStores.has(s.checkKey)).length, 0
+  )
   const totalQuantity = filteredProducts.reduce((sum, p) => sum + p.total_quantity, 0)
 
   // Count by staff
@@ -359,8 +364,8 @@ export default function PurchasingPage() {
             ))}
           </div>
           <div className="text-right">
-            <p className="text-sm text-muted-foreground">進捗</p>
-            <p className="text-lg font-bold">{purchasedCount} / {totalProducts}</p>
+            <p className="text-sm text-muted-foreground">進捗（店舗単位）</p>
+            <p className="text-lg font-bold">{checkedStoreOrders} / {totalStoreOrders}</p>
           </div>
           <Badge variant="outline" className="text-base px-3 py-1">
             <Package className="size-4 mr-1" />
@@ -460,79 +465,88 @@ export default function PurchasingPage() {
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead className="w-12">済</TableHead>
                               <TableHead className="w-20">担当</TableHead>
                               <TableHead>商品コード</TableHead>
                               <TableHead>商品名</TableHead>
                               <TableHead>カテゴリ</TableHead>
                               <TableHead className="text-right">合計数量</TableHead>
                               <TableHead className="text-right">本部在庫</TableHead>
-                              <TableHead>店舗内訳</TableHead>
+                              <TableHead>店舗内訳（チェックで完了）</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {group.products.map((product) => (
-                              <TableRow
-                                key={product.product_id}
-                                className={purchasedItems.has(product.product_id) ? "opacity-50 bg-muted/30" : ""}
-                              >
-                                <TableCell>
-                                  <Checkbox
-                                    checked={purchasedItems.has(product.product_id)}
-                                    onCheckedChange={() => togglePurchased(product.product_id)}
-                                  />
-                                </TableCell>
-                                <TableCell>
-                                  <Badge
-                                    variant={
-                                      product.assignedStaff === "浅野" ? "default" :
-                                      product.assignedStaff === "金本" ? "secondary" :
-                                      product.assignedStaff === "未設定" ? "outline" : "secondary"
-                                    }
-                                    className="text-xs"
-                                  >
-                                    {product.assignedStaff}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell className="font-mono text-sm">
-                                  {product.product_code}
-                                </TableCell>
-                                <TableCell className="font-medium">
-                                  <div className="flex items-center gap-2">
-                                    {purchasedItems.has(product.product_id) && (
-                                      <CheckCircle2 className="size-4 text-green-600" />
+                            {group.products.map((product) => {
+                              const allChecked = isProductAllChecked(product)
+                              return (
+                                <TableRow
+                                  key={product.product_id}
+                                  className={allChecked ? "opacity-50 bg-muted/30" : ""}
+                                >
+                                  <TableCell>
+                                    <Badge
+                                      variant={
+                                        product.assignedStaff === "浅野" ? "default" :
+                                        product.assignedStaff === "金本" ? "secondary" :
+                                        product.assignedStaff === "未設定" ? "outline" : "secondary"
+                                      }
+                                      className="text-xs"
+                                    >
+                                      {product.assignedStaff}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="font-mono text-sm">
+                                    {product.product_code}
+                                  </TableCell>
+                                  <TableCell className="font-medium">
+                                    <div className="flex items-center gap-2">
+                                      {allChecked && (
+                                        <CheckCircle2 className="size-4 text-green-600" />
+                                      )}
+                                      <span className={allChecked ? "line-through" : ""}>
+                                        {product.product_name}
+                                      </span>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>{product.category_name}</TableCell>
+                                  <TableCell className="text-right font-bold text-lg">
+                                    {product.total_quantity}
+                                  </TableCell>
+                                  <TableCell className="text-right text-sm">
+                                    {product.hqStock > 0 ? (
+                                      <span className="text-green-600 font-medium">{product.hqStock}</span>
+                                    ) : (
+                                      <span className="text-muted-foreground">0</span>
                                     )}
-                                    <span className={purchasedItems.has(product.product_id) ? "line-through" : ""}>
-                                      {product.product_name}
-                                    </span>
-                                  </div>
-                                </TableCell>
-                                <TableCell>{product.category_name}</TableCell>
-                                <TableCell className="text-right font-bold text-lg">
-                                  {product.total_quantity}
-                                </TableCell>
-                                <TableCell className="text-right text-sm">
-                                  {product.hqStock > 0 ? (
-                                    <span className="text-green-600 font-medium">{product.hqStock}</span>
-                                  ) : (
-                                    <span className="text-muted-foreground">0</span>
-                                  )}
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex flex-wrap gap-1">
-                                    {product.stores.map((store) => (
-                                      <Badge
-                                        key={store.store_code}
-                                        variant="outline"
-                                        className="text-xs"
-                                      >
-                                        {store.store_name}: {store.quantity}
-                                      </Badge>
-                                    ))}
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))}
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex flex-wrap gap-2">
+                                      {product.stores.map((store) => {
+                                        const isChecked = checkedStores.has(store.checkKey)
+                                        return (
+                                          <label
+                                            key={store.checkKey}
+                                            className={`flex items-center gap-1.5 cursor-pointer rounded-md border px-2 py-1 transition-colors \${
+                                              isChecked 
+                                                ? "bg-green-100 border-green-500 text-green-700" 
+                                                : "hover:bg-muted"
+                                            }`}
+                                          >
+                                            <Checkbox
+                                              checked={isChecked}
+                                              onCheckedChange={() => toggleStoreCheck(store.checkKey)}
+                                              className="size-3.5"
+                                            />
+                                            <span className="text-xs font-medium">
+                                              {store.store_name}: {store.quantity}
+                                            </span>
+                                          </label>
+                                        )
+                                      })}
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              )
+                            })}
                           </TableBody>
                         </Table>
                       </CardContent>
