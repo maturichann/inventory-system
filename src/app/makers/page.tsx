@@ -55,7 +55,7 @@ export default function MakersPage() {
     const { data, error } = await supabase
       .from("makers")
       .select("*")
-      .order("created_at", { ascending: true })
+      .order("group_code", { ascending: true })
 
     if (error) {
       console.error("Error fetching makers:", error)
