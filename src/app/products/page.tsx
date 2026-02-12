@@ -86,6 +86,7 @@ export default function ProductsPage() {
   const [formData, setFormData] = useState<ProductFormData>(initialFormData)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
+  const [selectedMaker, setSelectedMaker] = useState<string>("all")
   const [isSaving, setIsSaving] = useState(false)
 
   const supabase = createClient()
@@ -220,7 +221,8 @@ export default function ProductsPage() {
     const matchesSearch = product.product_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       product.product_code.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesCategory = selectedCategory === "all" || product.category_id === selectedCategory
-    return matchesSearch && matchesCategory
+    const matchesMaker = selectedMaker === "all" || product.maker_id === selectedMaker
+    return matchesSearch && matchesCategory && matchesMaker
   })
 
   const getCategoryName = (categoryId: string | null) => {
@@ -274,6 +276,19 @@ export default function ProductsPage() {
                 {categories.map((category) => (
                   <SelectItem key={category.id} value={category.id}>
                     {category.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={selectedMaker} onValueChange={setSelectedMaker}>
+              <SelectTrigger className="w-full sm:w-48">
+                <SelectValue placeholder="メーカーで絞り込み" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">すべてのメーカー</SelectItem>
+                {makers.map((maker) => (
+                  <SelectItem key={maker.id} value={maker.id}>
+                    {maker.maker_name}
                   </SelectItem>
                 ))}
               </SelectContent>
