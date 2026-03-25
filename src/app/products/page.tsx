@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { Plus, Search, Pencil, Trash2, Loader2, Package } from "lucide-react"
+import { Plus, Search, Pencil, Trash2, Loader2, Package, ChevronDown, ChevronRight } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { createClient } from "@/lib/supabase/client"
 import type { Product, Category, Maker, Staff } from "@/types/database"
@@ -75,6 +75,15 @@ const initialFormData: ProductFormData = {
   track_hq_inventory: false,
 }
 
+// エクステ商品ライン判定（商品名から）
+function getExtensionLine(name: string): string | null {
+  if (name.match(/^NUMEROフラットラッシュ/)) return "NUMEROフラットラッシュ"
+  if (name.match(/^ボリュームラッシュリュクス/)) return "ボリュームラッシュリュクス0.07"
+  if (name.match(/^ベルシアエクステ.*フラットブラウン/)) return "ベルシアエクステ（フラットブラウン）"
+  if (name.match(/^ベルシアエクステ.*フラットラッシュ/)) return "ベルシアエクステ（フラットラッシュ）"
+  return null
+}
+
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -88,6 +97,7 @@ export default function ProductsPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [selectedMaker, setSelectedMaker] = useState<string>("all")
   const [isSaving, setIsSaving] = useState(false)
+  const [expandedLines, setExpandedLines] = useState<Set<string>>(new Set())
 
   const supabase = createClient()
 
@@ -217,6 +227,13 @@ export default function ProductsPage() {
     }
   }
 
+  // 選択中のカテゴリがエクステかどうか
+  const isExtensionCategory = useMemo(() => {
+    if (selectedCategory === "all") return false
+    const cat = categories.find(c => c.id === selectedCategory)
+    return cat?.is_extension === true
+  }, [selectedCategory, categories])
+
   const filteredProducts = products.filter(product => {
     const matchesSearch = product.product_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       product.product_code.toLowerCase().includes(searchQuery.toLowerCase())
@@ -224,6 +241,48 @@ export default function ProductsPage() {
     const matchesMaker = selectedMaker === "all" || product.maker_id === selectedMaker
     return matchesSearch && matchesCategory && matchesMaker
   })
+
+  // エクステカテゴリの場合、商品ラインでグループ化
+  const { lineGroups, singleProducts } = useMemo(() => {
+    if (!isExtensionCategory || searchQuery) {
+      return { lineGroups: [], singleProducts: filteredProducts }
+    }
+
+    const groups: Record<string, Product[]> = {}
+    const singles: Product[] = []
+
+    for (const p of filteredProducts) {
+      const line = getExtensionLine(p.product_name)
+      if (line) {
+        if (!groups[line]) groups[line] = []
+        groups[line].push(p)
+      } else {
+        singles.push(p)
+      }
+    }
+
+    const lineArr = Object.entries(groups)
+      .filter(([, prods]) => prods.length > 1)
+      .map(([name, prods]) => ({ name, products: prods }))
+      .sort((a, b) => a.name.localeCompare(b.name, "ja"))
+
+    // 1商品のグループは単品扱い
+    for (const [, prods] of Object.entries(groups)) {
+      if (prods.length === 1) singles.push(prods[0])
+    }
+
+    return { lineGroups: lineArr, singleProducts: singles }
+  }, [isExtensionCategory, filteredProducts, searchQuery])
+
+  const toggleLine = (lineName: string) => {
+    const newExpanded = new Set(expandedLines)
+    if (newExpanded.has(lineName)) {
+      newExpanded.delete(lineName)
+    } else {
+      newExpanded.add(lineName)
+    }
+    setExpandedLines(newExpanded)
+  }
 
   const getCategoryName = (categoryId: string | null) => {
     const category = categories.find(c => c.id === categoryId)
@@ -239,6 +298,68 @@ export default function ProductsPage() {
     const staff = staffList.find(s => s.id === staffId)
     return staff?.name || "-"
   }
+
+  const renderProductRow = (product: Product) => (
+    <TableRow key={product.id}>
+      <TableCell className="font-mono text-sm">{product.product_code}</TableCell>
+      <TableCell>
+        <div>
+          <div className="font-medium">{product.product_name}</div>
+          {product.level1 && (
+            <div className="text-xs text-muted-foreground line-clamp-1">
+              {[product.level1, product.level2, product.level3]
+                .filter(Boolean)
+                .join(" > ")}
+            </div>
+          )}
+        </div>
+      </TableCell>
+      <TableCell>
+        <Badge variant="secondary">{getCategoryName(product.category_id)}</Badge>
+      </TableCell>
+      <TableCell>{getMakerName(product.maker_id)}</TableCell>
+      <TableCell className="text-right tabular-nums">
+        {product.unit_price.toLocaleString()}円
+      </TableCell>
+      <TableCell>
+        {product.track_hq_inventory ? (
+          <Badge variant="default" className="bg-blue-500 hover:bg-blue-600">
+            <Package className="mr-1 size-3" />
+            管理
+          </Badge>
+        ) : (
+          <Badge variant="secondary">仕入先</Badge>
+        )}
+      </TableCell>
+      <TableCell>
+        {product.assigned_staff_id ? (
+          <Badge variant="outline">{getStaffName(product.assigned_staff_id)}</Badge>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        )}
+      </TableCell>
+      <TableCell>
+        <div className="flex gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => handleOpenDialog(product)}
+            aria-label="編集"
+          >
+            <Pencil className="size-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => handleDelete(product.id)}
+            aria-label="削除"
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  )
 
   return (
     <div className="space-y-6">
@@ -323,67 +444,41 @@ export default function ProductsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredProducts.map((product) => (
-                  <TableRow key={product.id}>
-                    <TableCell className="font-mono text-sm">{product.product_code}</TableCell>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{product.product_name}</div>
-                        {product.level1 && (
-                          <div className="text-xs text-muted-foreground line-clamp-1">
-                            {[product.level1, product.level2, product.level3]
-                              .filter(Boolean)
-                              .join(" > ")}
-                          </div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{getCategoryName(product.category_id)}</Badge>
-                    </TableCell>
-                    <TableCell>{getMakerName(product.maker_id)}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {product.unit_price.toLocaleString()}円
-                    </TableCell>
-                    <TableCell>
-                      {product.track_hq_inventory ? (
-                        <Badge variant="default" className="bg-blue-500 hover:bg-blue-600">
-                          <Package className="mr-1 size-3" />
-                          管理
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary">仕入先</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {product.assigned_staff_id ? (
-                        <Badge variant="outline">{getStaffName(product.assigned_staff_id)}</Badge>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleOpenDialog(product)}
-                          aria-label="編集"
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(product.id)}
-                          aria-label="削除"
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                {/* エクステ商品ライングループ */}
+                {lineGroups.map((group) => (
+                  <>
+                    <TableRow
+                      key={`line-${group.name}`}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => toggleLine(group.name)}
+                    >
+                      <TableCell colSpan={2}>
+                        <div className="flex items-center gap-2">
+                          {expandedLines.has(group.name) ? (
+                            <ChevronDown className="size-4" />
+                          ) : (
+                            <ChevronRight className="size-4" />
+                          )}
+                          <span className="font-medium">{group.name}</span>
+                          <Badge variant="secondary">{group.products.length}件</Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">エクステ</Badge>
+                      </TableCell>
+                      <TableCell>{getMakerName(group.products[0].maker_id)}</TableCell>
+                      <TableCell />
+                      <TableCell />
+                      <TableCell />
+                      <TableCell />
+                    </TableRow>
+                    {expandedLines.has(group.name) &&
+                      group.products.map(renderProductRow)
+                    }
+                  </>
                 ))}
+                {/* 単品商品 */}
+                {singleProducts.map(renderProductRow)}
               </TableBody>
             </Table>
           )}
