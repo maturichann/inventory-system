@@ -69,7 +69,7 @@ type ParsedExtProduct = {
 // 商品ラインごとの属性表示順
 const LINE_ATTRIBUTE_ORDER: Record<string, string[]> = {
   "NUMEROフラットラッシュ": ["カール", "長さ", "カラー"],
-  "ボリュームラッシュリュクス0.07": ["カール", "長さ"],
+  "ボリュームラッシュリュクス": ["カール", "長さ"],
   "ベルシアエクステ（フラットラッシュ）": ["カール", "太さ", "長さ"],
   "ベルシアエクステ（フラットブラウン）": ["カール", "長さ"],
 }
@@ -92,12 +92,12 @@ function parseExtensionProduct(product: ProductWithCategory): ParsedExtProduct |
     }
   }
 
-  // ボリュームラッシュリュクス: "ボリュームラッシュリュクス0.07 CCカール 06mm"
+  // ボリュームラッシュリュクス: "ボリュームラッシュリュクス CCカール 06mm"
   const volMatch = name.match(/^ボリュームラッシュリュクス[\d.]+\s+(\S+)カール\s+(\d+)mm$/)
   if (volMatch) {
     return {
       product,
-      line: "ボリュームラッシュリュクス0.07",
+      line: "ボリュームラッシュリュクス",
       attributes: {
         "カール": volMatch[1],
         "長さ": volMatch[2] + "mm",

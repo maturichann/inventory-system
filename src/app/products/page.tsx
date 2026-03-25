@@ -78,7 +78,7 @@ const initialFormData: ProductFormData = {
 // エクステ商品ライン判定（商品名から）
 function getExtensionLine(name: string): string | null {
   if (name.match(/^NUMEROフラットラッシュ/)) return "NUMEROフラットラッシュ"
-  if (name.match(/^ボリュームラッシュリュクス/)) return "ボリュームラッシュリュクス0.07"
+  if (name.match(/^ボリュームラッシュリュクス/)) return "ボリュームラッシュリュクス"
   if (name.match(/^ベルシアエクステ.*フラットブラウン/)) return "ベルシアエクステ（フラットブラウン）"
   if (name.match(/^ベルシアエクステ.*フラットラッシュ/)) return "ベルシアエクステ（フラットラッシュ）"
   return null
