@@ -800,7 +800,10 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
                                   type="number"
                                   min="1"
                                   value={item.quantity}
-                                  onChange={(e) => handleUpdateQuantity(item.product_id, parseInt(e.target.value) || 0)}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value)
+                                    if (!isNaN(val)) handleUpdateQuantity(item.product_id, val)
+                                  }}
                                   className="w-14 text-center h-7"
                                 />
                                 <Button

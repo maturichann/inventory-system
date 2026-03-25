@@ -241,18 +241,22 @@ export default function OrdersPage() {
       return
     }
 
-    for (const item of order.order_items) {
+    await Promise.all(order.order_items.map(async (item) => {
       const hqStock = item.products?.hq_inventory?.quantity ?? 0
       const fulfilledFrom = hqStock >= item.quantity ? "hq" : "supplier"
 
-      await supabase
+      const { error: updateError } = await supabase
         .from("order_items")
         .update({
           fulfilled_from: fulfilledFrom,
           hq_stock_at_order: hqStock,
         })
         .eq("id", item.id)
-    }
+
+      if (updateError) {
+        console.error("Error updating order item:", updateError)
+      }
+    }))
 
     setIsSaving(false)
     fetchData()
@@ -275,7 +279,7 @@ export default function OrdersPage() {
     const result = data as { success: boolean; error?: string; order_number?: string }
 
     if (!result.success) {
-      alert(`完了処理に失敗しました: \${result.error}`)
+      alert(`完了処理に失敗しました: ${result.error}`)
       setIsSaving(false)
       return
     }
@@ -319,7 +323,7 @@ export default function OrdersPage() {
     const result = data as { success: boolean; error?: string; order_number?: string }
 
     if (!result.success) {
-      alert(`発注作成に失敗しました: \${result.error}`)
+      alert(`発注作成に失敗しました: ${result.error}`)
       setIsSaving(false)
       return
     }

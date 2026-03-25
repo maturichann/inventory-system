@@ -226,6 +226,11 @@ export default function PurchasingPage() {
       const existingStore = existing.stores.find(s => s.store_code === item.store_code)
       if (existingStore) {
         existingStore.quantity += item.quantity
+        if (item.notes && !existingStore.notes) {
+          existingStore.notes = item.notes
+        } else if (item.notes && existingStore.notes && existingStore.notes !== item.notes) {
+          existingStore.notes = `${existingStore.notes} / ${item.notes}`
+        }
       } else {
         existing.stores.push({
           store_name: item.store_name,
