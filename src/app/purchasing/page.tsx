@@ -42,6 +42,7 @@ type OrderItemWithDetails = {
   store_code: string
   order_number: string
   default_staff_name: string | null
+  notes: string | null
 }
 
 type HqInventory = {
@@ -54,6 +55,7 @@ type StoreInfo = {
   store_code: string
   order_number: string
   quantity: number
+  notes: string | null
   checkKey: string // product_id_store_code
 }
 
@@ -103,6 +105,7 @@ export default function PurchasingPage() {
           product_id,
           quantity,
           fulfilled_from,
+          notes,
           orders!inner (
             id,
             order_number,
@@ -187,6 +190,7 @@ export default function PurchasingPage() {
         store_code: order?.stores?.store_code || "",
         order_number: order?.order_number || "",
         default_staff_name: product?.staff?.name || null,
+        notes: item.notes || null,
       }
     })
 
@@ -203,12 +207,8 @@ export default function PurchasingPage() {
     return inv?.quantity || 0
   }
 
-  const getAssignedStaff = (productId: string, defaultStaffName: string | null): string => {
-    const stock = getHqStock(productId)
-    if (stock > 0) {
-      return "浅野"
-    }
-    return defaultStaffName || "未設定"
+  const getAssignedStaff = (_productId: string, defaultStaffName: string | null): string => {
+    return defaultStaffName || "浅野"
   }
 
   useEffect(() => {
@@ -232,6 +232,7 @@ export default function PurchasingPage() {
           store_code: item.store_code,
           order_number: item.order_number,
           quantity: item.quantity,
+          notes: item.notes,
           checkKey: checkKey,
         })
       }
@@ -250,6 +251,7 @@ export default function PurchasingPage() {
           store_code: item.store_code,
           order_number: item.order_number,
           quantity: item.quantity,
+          notes: item.notes,
           checkKey: checkKey,
         }],
         assignedStaff: getAssignedStaff(item.product_id, item.default_staff_name),
@@ -538,6 +540,11 @@ export default function PurchasingPage() {
                                             />
                                             <span className="text-xs font-medium">
                                               {store.store_name}: {store.quantity}
+                                              {store.notes && (
+                                                <span className="block text-muted-foreground font-normal">
+                                                  {store.notes}
+                                                </span>
+                                              )}
                                             </span>
                                           </label>
                                         )

@@ -107,13 +107,14 @@ BEGIN
       v_fulfilled_from := 'supplier';
     END IF;
 
-    INSERT INTO order_items (order_id, product_id, quantity, hq_stock_at_order, fulfilled_from)
+    INSERT INTO order_items (order_id, product_id, quantity, hq_stock_at_order, fulfilled_from, notes)
     VALUES (
       v_order_id,
       v_product_id,
       v_quantity,
       v_hq_stock,
-      v_fulfilled_from
+      v_fulfilled_from,
+      v_item->>'notes'
     );
   END LOOP;
 

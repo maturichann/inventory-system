@@ -221,22 +221,9 @@ export default function OrdersPage() {
   const handleProcessOrder = async (order: OrderWithDetails) => {
     setIsSaving(true)
 
-    const hasExtension = order.order_items.some(item =>
-      item.products?.product_code?.startsWith("EXT")
-    )
-    const allHaveHqStock = order.order_items.every(item => {
-      const hqStock = item.products?.hq_inventory?.quantity ?? 0
-      return hqStock >= item.quantity
-    })
-
-    let assignedStaffId: string | null = null
-    if (hasExtension && !allHaveHqStock) {
-      const kanemoto = staffList.find(s => s.name.includes("金本"))
-      assignedStaffId = kanemoto?.id || staffList[0]?.id || null
-    } else {
-      const asano = staffList.find(s => s.name.includes("浅野"))
-      assignedStaffId = asano?.id || staffList[0]?.id || null
-    }
+    // デフォルト担当者: 浅野さん
+    const asano = staffList.find(s => s.name.includes("浅野"))
+    const assignedStaffId = asano?.id || staffList[0]?.id || null
 
     const { error } = await supabase
       .from("orders")
@@ -572,6 +559,7 @@ export default function OrdersPage() {
                       <TableHead className="text-right tabular-nums">数量</TableHead>
                       <TableHead className="text-right tabular-nums">本部在庫</TableHead>
                       <TableHead>供給元</TableHead>
+                      <TableHead>備考</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -593,6 +581,9 @@ export default function OrdersPage() {
                           ) : (
                             <span className="text-muted-foreground">-</span>
                           )}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+                          {item.notes || "-"}
                         </TableCell>
                       </TableRow>
                     ))}

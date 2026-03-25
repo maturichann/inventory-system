@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useEffect, use } from "react"
+import { useState, useEffect, use, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -42,6 +43,7 @@ type OrderItem = {
   product_name: string
   category_name: string
   quantity: number
+  notes: string
 }
 
 type OrderHistory = {
@@ -53,6 +55,7 @@ type OrderHistory = {
     product_name: string
     product_code: string
     quantity: number
+    notes: string | null
   }[]
 }
 
@@ -73,6 +76,9 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
   const [activeTab, setActiveTab] = useState("order")
 
+  // エクステ階層フィルター用の状態
+  const [extensionFilters, setExtensionFilters] = useState<Record<string, string>>({})
+
   const supabase = createClient()
 
   const fetchOrderHistory = async (storeId: string) => {
@@ -87,6 +93,7 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
         created_at,
         order_items (
           quantity,
+          notes,
           products (
             product_name,
             product_code
@@ -114,6 +121,7 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
         product_name: item.products?.product_name || "",
         product_code: item.products?.product_code || "",
         quantity: item.quantity,
+        notes: item.notes || null,
       })),
     }))
 
@@ -166,12 +174,71 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
 
   const categories = [...new Set(products.map(p => p.categories?.name).filter(Boolean))]
 
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = product.product_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.product_code.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesCategory = selectedCategory === "all" || product.categories?.name === selectedCategory
-    return matchesSearch && matchesCategory
-  })
+  // 選択中のカテゴリがエクステかどうか
+  const selectedCategoryObj = useMemo(() => {
+    if (selectedCategory === "all") return null
+    return products.find(p => p.categories?.name === selectedCategory)?.categories || null
+  }, [selectedCategory, products])
+
+  const isExtensionCategory = selectedCategoryObj?.is_extension === true
+
+  // エクステカテゴリの商品からレベル階層のユニーク値を抽出
+  const extensionLevels = useMemo(() => {
+    if (!isExtensionCategory) return []
+
+    const categoryProducts = products.filter(p => p.categories?.name === selectedCategory)
+    const levels: { key: string; label: string; values: string[] }[] = []
+    const levelKeys = ["level1", "level2", "level3", "level4", "level5", "level6", "level7", "level8"] as const
+
+    for (const key of levelKeys) {
+      // 上位フィルターに一致する商品だけを対象にする
+      let filtered = categoryProducts
+      for (const prevLevel of levels) {
+        const selectedVal = extensionFilters[prevLevel.key]
+        if (selectedVal && selectedVal !== "all") {
+          filtered = filtered.filter(p => p[prevLevel.key as keyof Product] === selectedVal)
+        }
+      }
+
+      const uniqueValues = [...new Set(
+        filtered
+          .map(p => p[key] as string | null)
+          .filter((v): v is string => v !== null && v !== "")
+      )].sort()
+
+      if (uniqueValues.length === 0) break
+
+      levels.push({ key, label: key.replace("level", "レベル"), values: uniqueValues })
+    }
+
+    return levels
+  }, [isExtensionCategory, selectedCategory, products, extensionFilters])
+
+  // カテゴリ変更時にフィルターリセット
+  useEffect(() => {
+    setExtensionFilters({})
+  }, [selectedCategory])
+
+  const filteredProducts = useMemo(() => {
+    let filtered = products.filter(product => {
+      const matchesSearch = product.product_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        product.product_code.toLowerCase().includes(searchQuery.toLowerCase())
+      const matchesCategory = selectedCategory === "all" || product.categories?.name === selectedCategory
+      return matchesSearch && matchesCategory
+    })
+
+    // エクステカテゴリの場合、階層フィルターを適用
+    if (isExtensionCategory) {
+      for (const level of extensionLevels) {
+        const selectedVal = extensionFilters[level.key]
+        if (selectedVal && selectedVal !== "all") {
+          filtered = filtered.filter(p => p[level.key as keyof Product] === selectedVal)
+        }
+      }
+    }
+
+    return filtered
+  }, [products, searchQuery, selectedCategory, isExtensionCategory, extensionLevels, extensionFilters])
 
   const handleAddProduct = (product: ProductWithCategory) => {
     if (orderItems.some(item => item.product_id === product.id)) {
@@ -189,6 +256,7 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
       product_name: product.product_name,
       category_name: product.categories?.name || "-",
       quantity: 1,
+      notes: "",
     }])
   }
 
@@ -200,6 +268,14 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
     setOrderItems(orderItems.map(item =>
       item.product_id === productId
         ? { ...item, quantity }
+        : item
+    ))
+  }
+
+  const handleUpdateNotes = (productId: string, notes: string) => {
+    setOrderItems(orderItems.map(item =>
+      item.product_id === productId
+        ? { ...item, notes }
         : item
     ))
   }
@@ -225,6 +301,7 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
       p_items: orderItems.map(item => ({
         product_id: item.product_id,
         quantity: item.quantity,
+        notes: item.notes || null,
       })),
     })
 
@@ -238,7 +315,7 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
     const result = data as { success: boolean; error?: string; order_number?: string }
 
     if (!result.success) {
-      alert(`発注に失敗しました: \${result.error}`)
+      alert(`発注に失敗しました: ${result.error}`)
       setIsSubmitting(false)
       return
     }
@@ -366,6 +443,40 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
                       </Select>
                     </div>
 
+                    {/* エクステ階層フィルター */}
+                    {isExtensionCategory && extensionLevels.length > 0 && (
+                      <div className="flex flex-wrap gap-2 rounded-lg border bg-muted/50 p-3">
+                        {extensionLevels.map((level) => (
+                          <Select
+                            key={level.key}
+                            value={extensionFilters[level.key] || "all"}
+                            onValueChange={(value) => {
+                              const newFilters = { ...extensionFilters }
+                              newFilters[level.key] = value
+                              // 変更したレベルより下位のフィルターをリセット
+                              const levelIdx = extensionLevels.findIndex(l => l.key === level.key)
+                              for (let i = levelIdx + 1; i < extensionLevels.length; i++) {
+                                delete newFilters[extensionLevels[i].key]
+                              }
+                              setExtensionFilters(newFilters)
+                            }}
+                          >
+                            <SelectTrigger className="w-32 bg-background">
+                              <SelectValue placeholder={level.label} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">すべて</SelectItem>
+                              {level.values.map((val) => (
+                                <SelectItem key={val} value={val}>
+                                  {val}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ))}
+                      </div>
+                    )}
+
                     <div className="grid gap-2 sm:grid-cols-2">
                       {filteredProducts.length === 0 ? (
                         <p className="col-span-2 py-8 text-center text-muted-foreground">
@@ -378,7 +489,7 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
                             <button
                               key={product.id}
                               onClick={() => handleAddProduct(product)}
-                              className={`flex items-center justify-between rounded-lg border p-3 text-left transition-colors hover:bg-accent \${
+                              className={`flex items-center justify-between rounded-lg border p-3 text-left transition-colors hover:bg-accent ${
                                 inCart ? "border-primary bg-primary/5" : ""
                               }`}
                             >
@@ -419,16 +530,28 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
                       </p>
                     ) : (
                       <div className="space-y-4">
-                        <div className="space-y-2">
+                        <div className="space-y-3">
                           {orderItems.map((item) => (
                             <div
                               key={item.product_id}
-                              className="flex items-center gap-2 rounded-md border p-2"
+                              className="rounded-md border p-3 space-y-2"
                             >
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium truncate">{item.product_name}</p>
-                                <p className="text-xs text-muted-foreground">{item.product_code}</p>
+                              {/* 上段: 商品名 */}
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-medium leading-tight">{item.product_name}</p>
+                                  <p className="text-xs text-muted-foreground">{item.product_code}</p>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-7 shrink-0 text-destructive"
+                                  onClick={() => handleRemoveItem(item.product_id)}
+                                >
+                                  <Trash2 className="size-4" />
+                                </Button>
                               </div>
+                              {/* 下段: 数量ボタン */}
                               <div className="flex items-center gap-1">
                                 <Button
                                   variant="outline"
@@ -454,14 +577,14 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
                                   +
                                 </Button>
                               </div>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="size-7 text-destructive"
-                                onClick={() => handleRemoveItem(item.product_id)}
-                              >
-                                <Trash2 className="size-4" />
-                              </Button>
+                              {/* 備考欄 */}
+                              <Textarea
+                                placeholder="備考（任意）"
+                                value={item.notes}
+                                onChange={(e) => handleUpdateNotes(item.product_id, e.target.value)}
+                                className="text-xs min-h-[2rem] h-8 resize-none"
+                                rows={1}
+                              />
                             </div>
                           ))}
                         </div>
@@ -548,6 +671,7 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
                                   <TableHead>商品コード</TableHead>
                                   <TableHead>商品名</TableHead>
                                   <TableHead className="text-right">数量</TableHead>
+                                  <TableHead>備考</TableHead>
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
@@ -556,6 +680,9 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
                                     <TableCell className="font-mono text-sm">{item.product_code}</TableCell>
                                     <TableCell>{item.product_name}</TableCell>
                                     <TableCell className="text-right">{item.quantity}</TableCell>
+                                    <TableCell className="text-sm text-muted-foreground">
+                                      {item.notes || "-"}
+                                    </TableCell>
                                   </TableRow>
                                 ))}
                               </TableBody>

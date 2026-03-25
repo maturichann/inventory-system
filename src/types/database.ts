@@ -316,6 +316,7 @@ export interface Database {
           unit_price: number | null
           hq_stock_at_order: number | null
           fulfilled_from: string | null
+          notes: string | null
           status: string
           created_at: string
           updated_at: string
@@ -328,6 +329,7 @@ export interface Database {
           unit_price?: number | null
           hq_stock_at_order?: number | null
           fulfilled_from?: string | null
+          notes?: string | null
           status?: string
           created_at?: string
           updated_at?: string
@@ -340,6 +342,7 @@ export interface Database {
           unit_price?: number | null
           hq_stock_at_order?: number | null
           fulfilled_from?: string | null
+          notes?: string | null
           status?: string
           created_at?: string
           updated_at?: string
