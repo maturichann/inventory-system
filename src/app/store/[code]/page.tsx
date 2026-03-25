@@ -29,7 +29,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Plus, Trash2, ShoppingCart, Loader2, Check, Search, History, ChevronDown, ChevronRight } from "lucide-react"
+import { Plus, Trash2, ShoppingCart, Loader2, Check, Search, History, ChevronDown, ChevronRight, X } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import type { Store, Product, Category } from "@/types/database"
 
@@ -37,7 +37,7 @@ type ProductWithCategory = Product & {
   categories: Category | null
 }
 
-type OrderItem = {
+type CartItem = {
   product_id: string
   product_code: string
   product_name: string
@@ -59,11 +59,94 @@ type OrderHistory = {
   }[]
 }
 
+// エクステ商品の解析結果
+type ParsedExtProduct = {
+  product: ProductWithCategory
+  line: string
+  attributes: Record<string, string>
+}
+
+// 商品ラインごとの属性表示順
+const LINE_ATTRIBUTE_ORDER: Record<string, string[]> = {
+  "NUMEROフラットラッシュ": ["カール", "長さ", "カラー"],
+  "ボリュームラッシュリュクス0.07": ["カール", "長さ"],
+  "ベルシアエクステ（フラットラッシュ）": ["カール", "太さ", "長さ"],
+  "ベルシアエクステ（フラットブラウン）": ["カール", "長さ"],
+}
+
+// 商品名からエクステ属性を解析
+function parseExtensionProduct(product: ProductWithCategory): ParsedExtProduct | null {
+  const name = product.product_name
+
+  // NUMEROフラットラッシュ: "NUMEROフラットラッシュマットカラー長さMIX SCカール カラー名"
+  const numeroMatch = name.match(/^NUMEROフラットラッシュ.*長さ(\S+)\s+(\S+)カール\s+(.+)$/)
+  if (numeroMatch) {
+    return {
+      product,
+      line: "NUMEROフラットラッシュ",
+      attributes: {
+        "カール": numeroMatch[2],
+        "長さ": numeroMatch[1],
+        "カラー": numeroMatch[3],
+      },
+    }
+  }
+
+  // ボリュームラッシュリュクス: "ボリュームラッシュリュクス0.07 CCカール 06mm"
+  const volMatch = name.match(/^ボリュームラッシュリュクス[\d.]+\s+(\S+)カール\s+(\d+)mm$/)
+  if (volMatch) {
+    return {
+      product,
+      line: "ボリュームラッシュリュクス0.07",
+      attributes: {
+        "カール": volMatch[1],
+        "長さ": volMatch[2] + "mm",
+      },
+    }
+  }
+
+  // ベルシアエクステ（フラットブラウン）: "ベルシアエクステ フラットブラウン Jカール 0.15 8mm" etc
+  const belBrownMatch = name.match(/^ベルシアエクステ.*フラットブラウン.*?(\S+)カール\s+[\d.]+\s+(\d+)mm$/)
+  if (belBrownMatch) {
+    return {
+      product,
+      line: "ベルシアエクステ（フラットブラウン）",
+      attributes: {
+        "カール": belBrownMatch[1],
+        "長さ": belBrownMatch[2] + "mm",
+      },
+    }
+  }
+
+  // ベルシアエクステ（フラットラッシュ）: "ベルシアエクステ フラットラッシュ Cカール 0.15 10mm" etc
+  const belFlatMatch = name.match(/^ベルシアエクステ.*フラットラッシュ.*?(\S+)カール\s+([\d.]+)\s+(\d+)mm$/)
+  if (belFlatMatch) {
+    return {
+      product,
+      line: "ベルシアエクステ（フラットラッシュ）",
+      attributes: {
+        "カール": belFlatMatch[1],
+        "太さ": belFlatMatch[2],
+        "長さ": belFlatMatch[3] + "mm",
+      },
+    }
+  }
+
+  return null
+}
+
+// 商品ラインの情報
+type ExtensionLine = {
+  name: string
+  parsedProducts: ParsedExtProduct[]
+  attributeOrder: string[]
+}
+
 export default function StoreOrderPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params)
   const [store, setStore] = useState<Store | null>(null)
   const [products, setProducts] = useState<ProductWithCategory[]>([])
-  const [orderItems, setOrderItems] = useState<OrderItem[]>([])
+  const [orderItems, setOrderItems] = useState<CartItem[]>([])
   const [orderHistory, setOrderHistory] = useState<OrderHistory[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
@@ -76,8 +159,9 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
   const [activeTab, setActiveTab] = useState("order")
 
-  // エクステ階層フィルター用の状態
-  const [extensionFilters, setExtensionFilters] = useState<Record<string, string>>({})
+  // エクステ階層選択用
+  const [selectedLine, setSelectedLine] = useState<string | null>(null)
+  const [lineSelections, setLineSelections] = useState<Record<string, string>>({})
 
   const supabase = createClient()
 
@@ -174,7 +258,7 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
 
   const categories = [...new Set(products.map(p => p.categories?.name).filter(Boolean))]
 
-  // 選択中のカテゴリがエクステかどうか
+  // エクステカテゴリ判定
   const selectedCategoryObj = useMemo(() => {
     if (selectedCategory === "all") return null
     return products.find(p => p.categories?.name === selectedCategory)?.categories || null
@@ -182,63 +266,97 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
 
   const isExtensionCategory = selectedCategoryObj?.is_extension === true
 
-  // エクステカテゴリの商品からレベル階層のユニーク値を抽出
-  const extensionLevels = useMemo(() => {
-    if (!isExtensionCategory) return []
+  // エクステ商品を商品ラインと単品に分類
+  const { extensionLines, singleExtProducts } = useMemo(() => {
+    if (!isExtensionCategory) return { extensionLines: [], singleExtProducts: [] }
 
-    const categoryProducts = products.filter(p => p.categories?.name === selectedCategory)
-    const levels: { key: string; label: string; values: string[] }[] = []
-    const levelKeys = ["level1", "level2", "level3", "level4", "level5", "level6", "level7", "level8"] as const
+    const extProducts = products.filter(p => p.categories?.name === selectedCategory)
+    const lineMap: Record<string, ParsedExtProduct[]> = {}
+    const singles: ProductWithCategory[] = []
 
-    for (const key of levelKeys) {
-      // 上位フィルターに一致する商品だけを対象にする
-      let filtered = categoryProducts
-      for (const prevLevel of levels) {
-        const selectedVal = extensionFilters[prevLevel.key]
-        if (selectedVal && selectedVal !== "all") {
-          filtered = filtered.filter(p => p[prevLevel.key as keyof Product] === selectedVal)
-        }
+    for (const p of extProducts) {
+      const parsed = parseExtensionProduct(p)
+      if (parsed) {
+        if (!lineMap[parsed.line]) lineMap[parsed.line] = []
+        lineMap[parsed.line].push(parsed)
+      } else {
+        singles.push(p)
       }
-
-      const uniqueValues = [...new Set(
-        filtered
-          .map(p => p[key] as string | null)
-          .filter((v): v is string => v !== null && v !== "")
-      )].sort()
-
-      if (uniqueValues.length === 0) break
-
-      levels.push({ key, label: key.replace("level", "レベル"), values: uniqueValues })
     }
 
-    return levels
-  }, [isExtensionCategory, selectedCategory, products, extensionFilters])
+    const lines: ExtensionLine[] = Object.entries(lineMap)
+      .filter(([, prods]) => prods.length > 1)
+      .map(([name, prods]) => ({
+        name,
+        parsedProducts: prods,
+        attributeOrder: LINE_ATTRIBUTE_ORDER[name] || Object.keys(prods[0].attributes),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, "ja"))
 
-  // カテゴリ変更時にフィルターリセット
+    // 1商品しかないグループは単品扱い
+    for (const [, prods] of Object.entries(lineMap)) {
+      if (prods.length === 1) {
+        singles.push(prods[0].product)
+      }
+    }
+
+    return { extensionLines: lines, singleExtProducts: singles }
+  }, [isExtensionCategory, selectedCategory, products])
+
+  // 選択中のラインで、現在の選択に基づいてフィルタリング
+  const currentLineData = useMemo(() => {
+    if (!selectedLine) return null
+    const line = extensionLines.find(l => l.name === selectedLine)
+    if (!line) return null
+
+    // 各属性の選択肢を計算（上位の選択で絞り込み）
+    const availableOptions: { key: string; values: string[] }[] = []
+    let filteredProducts = line.parsedProducts
+
+    for (const attrKey of line.attributeOrder) {
+      const values = [...new Set(filteredProducts.map(p => p.attributes[attrKey]).filter(Boolean))].sort()
+      availableOptions.push({ key: attrKey, values })
+
+      const selected = lineSelections[attrKey]
+      if (selected) {
+        filteredProducts = filteredProducts.filter(p => p.attributes[attrKey] === selected)
+      } else {
+        break // 未選択の属性以降は表示しない
+      }
+    }
+
+    // 全属性選択済みかチェック
+    const allSelected = line.attributeOrder.every(key => lineSelections[key])
+    const matchedProduct = allSelected && filteredProducts.length === 1 ? filteredProducts[0].product : null
+
+    return { line, availableOptions, matchedProduct }
+  }, [selectedLine, extensionLines, lineSelections])
+
+  // カテゴリ・ライン変更時のリセット
   useEffect(() => {
-    setExtensionFilters({})
+    setSelectedLine(null)
+    setLineSelections({})
   }, [selectedCategory])
 
+  // 通常商品のフィルタリング（エクステ以外）
   const filteredProducts = useMemo(() => {
-    let filtered = products.filter(product => {
+    if (isExtensionCategory) return [] // エクステは専用UIで表示
+    return products.filter(product => {
       const matchesSearch = product.product_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         product.product_code.toLowerCase().includes(searchQuery.toLowerCase())
       const matchesCategory = selectedCategory === "all" || product.categories?.name === selectedCategory
       return matchesSearch && matchesCategory
     })
+  }, [products, searchQuery, selectedCategory, isExtensionCategory])
 
-    // エクステカテゴリの場合、階層フィルターを適用
-    if (isExtensionCategory) {
-      for (const level of extensionLevels) {
-        const selectedVal = extensionFilters[level.key]
-        if (selectedVal && selectedVal !== "all") {
-          filtered = filtered.filter(p => p[level.key as keyof Product] === selectedVal)
-        }
-      }
-    }
-
-    return filtered
-  }, [products, searchQuery, selectedCategory, isExtensionCategory, extensionLevels, extensionFilters])
+  // エクステ単品のフィルタリング（検索対応）
+  const filteredSingleExtProducts = useMemo(() => {
+    if (!isExtensionCategory) return []
+    return singleExtProducts.filter(p =>
+      p.product_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.product_code.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+  }, [isExtensionCategory, singleExtProducts, searchQuery])
 
   const handleAddProduct = (product: ProductWithCategory) => {
     if (orderItems.some(item => item.product_id === product.id)) {
@@ -258,6 +376,13 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
       quantity: 1,
       notes: "",
     }])
+  }
+
+  const handleAddExtProduct = (product: ProductWithCategory) => {
+    handleAddProduct(product)
+    // 選択をリセットして次の選択に備える
+    setSelectedLine(null)
+    setLineSelections({})
   }
 
   const handleUpdateQuantity = (productId: string, quantity: number) => {
@@ -443,74 +568,186 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
                       </Select>
                     </div>
 
-                    {/* エクステ階層フィルター */}
-                    {isExtensionCategory && extensionLevels.length > 0 && (
-                      <div className="flex flex-wrap gap-2 rounded-lg border bg-muted/50 p-3">
-                        {extensionLevels.map((level) => (
-                          <Select
-                            key={level.key}
-                            value={extensionFilters[level.key] || "all"}
-                            onValueChange={(value) => {
-                              const newFilters = { ...extensionFilters }
-                              newFilters[level.key] = value
-                              // 変更したレベルより下位のフィルターをリセット
-                              const levelIdx = extensionLevels.findIndex(l => l.key === level.key)
-                              for (let i = levelIdx + 1; i < extensionLevels.length; i++) {
-                                delete newFilters[extensionLevels[i].key]
-                              }
-                              setExtensionFilters(newFilters)
-                            }}
-                          >
-                            <SelectTrigger className="w-32 bg-background">
-                              <SelectValue placeholder={level.label} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">すべて</SelectItem>
-                              {level.values.map((val) => (
-                                <SelectItem key={val} value={val}>
-                                  {val}
-                                </SelectItem>
+                    {/* エクステカテゴリ: 商品ライン選択UI */}
+                    {isExtensionCategory && (
+                      <div className="space-y-4">
+                        {/* 商品ライン一覧 */}
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium text-muted-foreground">商品ラインを選択</p>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {extensionLines.map((line) => (
+                              <button
+                                key={line.name}
+                                onClick={() => {
+                                  if (selectedLine === line.name) {
+                                    setSelectedLine(null)
+                                    setLineSelections({})
+                                  } else {
+                                    setSelectedLine(line.name)
+                                    setLineSelections({})
+                                  }
+                                }}
+                                className={`flex items-center justify-between rounded-lg border p-4 text-left transition-colors hover:bg-accent ${
+                                  selectedLine === line.name ? "border-primary bg-primary/5 ring-1 ring-primary" : ""
+                                }`}
+                              >
+                                <div>
+                                  <p className="font-medium">{line.name}</p>
+                                  <p className="text-xs text-muted-foreground">{line.parsedProducts.length}種類</p>
+                                </div>
+                                {selectedLine === line.name ? (
+                                  <ChevronDown className="size-4 text-primary" />
+                                ) : (
+                                  <ChevronRight className="size-4 text-muted-foreground" />
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* 選択中のラインの階層セレクト */}
+                        {selectedLine && currentLineData && (
+                          <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-4 space-y-4">
+                            <div className="flex items-center justify-between">
+                              <p className="font-medium text-primary">{selectedLine}</p>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-7"
+                                onClick={() => { setSelectedLine(null); setLineSelections({}) }}
+                              >
+                                <X className="size-4" />
+                              </Button>
+                            </div>
+
+                            <div className="flex flex-wrap gap-3">
+                              {currentLineData.availableOptions.map((opt) => (
+                                <div key={opt.key} className="space-y-1">
+                                  <p className="text-xs font-medium text-muted-foreground">{opt.key}</p>
+                                  <Select
+                                    value={lineSelections[opt.key] || ""}
+                                    onValueChange={(value) => {
+                                      const newSelections: Record<string, string> = {}
+                                      // 選択したキーまでの値を保持、それ以降はリセット
+                                      const attrOrder = currentLineData.line.attributeOrder
+                                      for (const key of attrOrder) {
+                                        if (key === opt.key) {
+                                          newSelections[key] = value
+                                          break
+                                        }
+                                        if (lineSelections[key]) {
+                                          newSelections[key] = lineSelections[key]
+                                        }
+                                      }
+                                      setLineSelections(newSelections)
+                                    }}
+                                  >
+                                    <SelectTrigger className="w-36 bg-background">
+                                      <SelectValue placeholder={`${opt.key}を選択`} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {opt.values.map((val) => (
+                                        <SelectItem key={val} value={val}>
+                                          {val}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
                               ))}
-                            </SelectContent>
-                          </Select>
-                        ))}
+                            </div>
+
+                            {/* 商品が確定したらカートに追加ボタン */}
+                            {currentLineData.matchedProduct && (
+                              <div className="flex items-center justify-between rounded-md border bg-background p-3">
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-medium truncate">{currentLineData.matchedProduct.product_name}</p>
+                                  <p className="text-xs text-muted-foreground">{currentLineData.matchedProduct.product_code}</p>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleAddExtProduct(currentLineData.matchedProduct!)}
+                                >
+                                  <Plus className="size-4" />
+                                  カートに追加
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* エクステ単品商品（コーム、リムーバー等） */}
+                        {filteredSingleExtProducts.length > 0 && (
+                          <div className="space-y-2">
+                            <p className="text-sm font-medium text-muted-foreground">その他のエクステ商品</p>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {filteredSingleExtProducts.map((product) => {
+                                const inCart = orderItems.find(item => item.product_id === product.id)
+                                return (
+                                  <button
+                                    key={product.id}
+                                    onClick={() => handleAddProduct(product)}
+                                    className={`flex items-center justify-between rounded-lg border p-3 text-left transition-colors hover:bg-accent ${
+                                      inCart ? "border-primary bg-primary/5" : ""
+                                    }`}
+                                  >
+                                    <div className="min-w-0 flex-1">
+                                      <p className="font-medium truncate">{product.product_name}</p>
+                                      <p className="text-xs text-muted-foreground">{product.product_code}</p>
+                                    </div>
+                                    {inCart ? (
+                                      <Badge variant="default" className="ml-2 shrink-0">
+                                        {inCart.quantity}
+                                      </Badge>
+                                    ) : (
+                                      <Plus className="ml-2 size-4 shrink-0 text-muted-foreground" />
+                                    )}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {filteredProducts.length === 0 ? (
-                        <p className="col-span-2 py-8 text-center text-muted-foreground">
-                          商品が見つかりません
-                        </p>
-                      ) : (
-                        filteredProducts.map((product) => {
-                          const inCart = orderItems.find(item => item.product_id === product.id)
-                          return (
-                            <button
-                              key={product.id}
-                              onClick={() => handleAddProduct(product)}
-                              className={`flex items-center justify-between rounded-lg border p-3 text-left transition-colors hover:bg-accent ${
-                                inCart ? "border-primary bg-primary/5" : ""
-                              }`}
-                            >
-                              <div className="min-w-0 flex-1">
-                                <p className="font-medium truncate">{product.product_name}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {product.product_code} / {product.categories?.name || "-"}
-                                </p>
-                              </div>
-                              {inCart ? (
-                                <Badge variant="default" className="ml-2 shrink-0">
-                                  {inCart.quantity}
-                                </Badge>
-                              ) : (
-                                <Plus className="ml-2 size-4 shrink-0 text-muted-foreground" />
-                              )}
-                            </button>
-                          )
-                        })
-                      )}
-                    </div>
+                    {/* 通常商品（エクステ以外） */}
+                    {!isExtensionCategory && (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {filteredProducts.length === 0 ? (
+                          <p className="col-span-2 py-8 text-center text-muted-foreground">
+                            商品が見つかりません
+                          </p>
+                        ) : (
+                          filteredProducts.map((product) => {
+                            const inCart = orderItems.find(item => item.product_id === product.id)
+                            return (
+                              <button
+                                key={product.id}
+                                onClick={() => handleAddProduct(product)}
+                                className={`flex items-center justify-between rounded-lg border p-3 text-left transition-colors hover:bg-accent ${
+                                  inCart ? "border-primary bg-primary/5" : ""
+                                }`}
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-medium truncate">{product.product_name}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {product.product_code} / {product.categories?.name || "-"}
+                                  </p>
+                                </div>
+                                {inCart ? (
+                                  <Badge variant="default" className="ml-2 shrink-0">
+                                    {inCart.quantity}
+                                  </Badge>
+                                ) : (
+                                  <Plus className="ml-2 size-4 shrink-0 text-muted-foreground" />
+                                )}
+                              </button>
+                            )
+                          })
+                        )}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -536,7 +773,6 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
                               key={item.product_id}
                               className="rounded-md border p-3 space-y-2"
                             >
-                              {/* 上段: 商品名 */}
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0 flex-1">
                                   <p className="text-sm font-medium leading-tight">{item.product_name}</p>
@@ -551,7 +787,6 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
                                   <Trash2 className="size-4" />
                                 </Button>
                               </div>
-                              {/* 下段: 数量ボタン */}
                               <div className="flex items-center gap-1">
                                 <Button
                                   variant="outline"
@@ -577,7 +812,6 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
                                   +
                                 </Button>
                               </div>
-                              {/* 備考欄 */}
                               <Textarea
                                 placeholder="備考（任意）"
                                 value={item.notes}
