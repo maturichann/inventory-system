@@ -36,7 +36,7 @@ const initialFormData: MakerFormData = {
   group_code: "",
   maker_name: "",
   order_category: "",
-  minimum_order: "1",
+  minimum_order: "0",
 }
 
 export default function MakersPage() {
@@ -103,7 +103,7 @@ export default function MakersPage() {
           group_code: formData.group_code,
           maker_name: formData.maker_name,
           order_category: formData.order_category || null,
-          minimum_order: parseInt(formData.minimum_order) || 1,
+          minimum_order: parseInt(formData.minimum_order) || 0,
         })
         .eq("id", editingMaker.id)
 
@@ -118,7 +118,7 @@ export default function MakersPage() {
           group_code: formData.group_code,
           maker_name: formData.maker_name,
           order_category: formData.order_category || null,
-          minimum_order: parseInt(formData.minimum_order) || 1,
+          minimum_order: parseInt(formData.minimum_order) || 0,
         })
 
       if (error) {
@@ -200,7 +200,7 @@ export default function MakersPage() {
                   <TableHead>グループコード</TableHead>
                   <TableHead>メーカー名</TableHead>
                   <TableHead>発注区分</TableHead>
-                  <TableHead className="text-right tabular-nums">最低発注数</TableHead>
+                  <TableHead className="text-right tabular-nums">最低発注金額</TableHead>
                   <TableHead>状態</TableHead>
                   <TableHead className="w-24">操作</TableHead>
                 </TableRow>
@@ -211,7 +211,9 @@ export default function MakersPage() {
                     <TableCell className="font-mono text-sm">{maker.group_code}</TableCell>
                     <TableCell className="font-medium">{maker.maker_name}</TableCell>
                     <TableCell>{maker.order_category || "-"}</TableCell>
-                    <TableCell className="text-right tabular-nums">{maker.minimum_order}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {maker.minimum_order > 0 ? `¥${maker.minimum_order.toLocaleString()}` : "-"}
+                    </TableCell>
                     <TableCell>
                       <Badge variant={maker.is_active ? "success" : "secondary"}>
                         {maker.is_active ? "有効" : "無効"}
@@ -280,11 +282,11 @@ export default function MakersPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="minimum_order">最低発注数</Label>
+              <Label htmlFor="minimum_order">最低発注金額（円）</Label>
               <Input
                 id="minimum_order"
                 type="number"
-                min="1"
+                min="0"
                 value={formData.minimum_order}
                 onChange={(e) => setFormData({ ...formData, minimum_order: e.target.value })}
               />
