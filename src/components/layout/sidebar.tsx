@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -14,6 +15,7 @@ import {
   ShoppingBag,
   BookOpen,
   History,
+  ChevronDown,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -67,8 +69,37 @@ const navigationGroups: NavigationGroup[] = [
   },
 ]
 
+const STORAGE_KEY = "sidebar:collapsedGroups"
+
 export function Sidebar() {
   const pathname = usePathname()
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set()
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY)
+      if (raw) return new Set(JSON.parse(raw) as string[])
+    } catch {
+      // ignore invalid JSON
+    }
+    return new Set()
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(collapsed)))
+    } catch {
+      // storage not available
+    }
+  }, [collapsed])
+
+  const toggleGroup = (label: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(label)) next.delete(label)
+      else next.add(label)
+      return next
+    })
+  }
 
   const renderNavigationItem = (item: NavigationItem) => {
     const isActive =
@@ -101,19 +132,37 @@ export function Sidebar() {
           <span className="font-semibold">在庫管理システム</span>
         </Link>
       </div>
-      <nav className="flex flex-col gap-6 p-4">
+      <nav className="flex flex-col gap-4 p-4 overflow-y-auto max-h-[calc(100dvh-4rem)]">
         <div className="space-y-1">
           {renderNavigationItem(primaryNavigationItem)}
         </div>
 
-        {navigationGroups.map((group) => (
-          <div key={group.label} className="space-y-1">
-            <p className="px-3 pb-1 text-xs font-medium tracking-wide text-muted-foreground/80">
-              {group.label}
-            </p>
-            {group.items.map((item) => renderNavigationItem(item))}
-          </div>
-        ))}
+        {navigationGroups.map((group) => {
+          const isCollapsed = collapsed.has(group.label)
+          return (
+            <div key={group.label} className="space-y-1">
+              <button
+                type="button"
+                onClick={() => toggleGroup(group.label)}
+                aria-expanded={!isCollapsed}
+                className="group/label flex w-full items-center justify-between px-3 py-1 text-xs font-medium tracking-wide text-muted-foreground/80 hover:text-foreground transition-colors"
+              >
+                <span>{group.label}</span>
+                <ChevronDown
+                  className={cn(
+                    "size-3.5 transition-transform duration-200",
+                    isCollapsed && "-rotate-90"
+                  )}
+                />
+              </button>
+              {!isCollapsed && (
+                <div className="space-y-1">
+                  {group.items.map((item) => renderNavigationItem(item))}
+                </div>
+              )}
+            </div>
+          )
+        })}
       </nav>
     </aside>
   )
