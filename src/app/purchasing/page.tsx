@@ -25,7 +25,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
-import { Search, Loader2, ChevronDown, ChevronRight, Package, ShoppingBag, CheckCircle2, User } from "lucide-react"
+import { Search, Loader2, ChevronDown, ChevronRight, Package, ShoppingBag, CheckCircle2, User, FileText } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/client"
 
 type OrderItemWithDetails = {
@@ -150,7 +151,6 @@ export default function PurchasingPage() {
       setHqInventory(inventoryResult.data)
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const items: OrderItemWithDetails[] = (ordersResult.data || [])
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .filter((item: any) => {
@@ -219,7 +219,7 @@ export default function PurchasingPage() {
   // Group by product and aggregate
   const productSummaries: ProductSummary[] = orderItems.reduce((acc, item) => {
     const existing = acc.find(p => p.product_id === item.product_id)
-    const checkKey = `\${item.product_id}_\${item.store_code}`
+    const checkKey = `${item.product_id}_${item.store_code}`
 
     if (existing) {
       existing.total_quantity += item.quantity
@@ -357,6 +357,20 @@ export default function PurchasingPage() {
           <p className="text-muted-foreground text-pretty">
             各店舗からの発注をメーカー別・商品別にまとめて表示
           </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <span className="text-xs text-muted-foreground self-center mr-1">PDF出力:</span>
+            {["事務所", "金本", "ベルシア"].map((s) => (
+              <Button
+                key={s}
+                size="sm"
+                variant="outline"
+                onClick={() => window.open(`/purchasing/print?supplier=${encodeURIComponent(s)}`, "_blank", "noopener,noreferrer")}
+              >
+                <FileText className="size-3.5 mr-1" />
+                {s}
+              </Button>
+            ))}
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex gap-2 flex-wrap">

@@ -19,6 +19,15 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   Table,
   TableBody,
   TableCell,
@@ -31,10 +40,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Plus, Trash2, ShoppingCart, Loader2, Check, Search, History, ChevronDown, ChevronRight, X } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
-import type { Store, Product, Category } from "@/types/database"
+import type { Store, Product, Category, Maker } from "@/types/database"
 
 type ProductWithCategory = Product & {
   categories: Category | null
+  makers: Pick<Maker, "id" | "maker_name" | "minimum_order"> | null
 }
 
 type CartItem = {
@@ -57,6 +67,14 @@ type OrderHistory = {
     quantity: number
     notes: string | null
   }[]
+}
+
+type MinimumOrderViolation = {
+  makerId: string
+  makerName: string
+  minimumOrder: number
+  currentTotal: number
+  shortage: number
 }
 
 // エクステ商品の解析結果
@@ -152,6 +170,8 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false)
+  const [isMinimumOrderDialogOpen, setIsMinimumOrderDialogOpen] = useState(false)
+  const [minimumOrderViolations, setMinimumOrderViolations] = useState<MinimumOrderViolation[]>([])
   const [orderNumber, setOrderNumber] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
@@ -234,7 +254,15 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
 
       const { data: productsData } = await supabase
         .from("products")
-        .select(`*, categories (*)`)
+        .select(`
+          *,
+          categories (*),
+          makers (
+            id,
+            maker_name,
+            minimum_order
+          )
+        `)
         .eq("is_active", true)
         .order("product_name")
 
@@ -419,6 +447,45 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
       }
     }
 
+    const productMap = new Map(products.map(product => [product.id, product]))
+    const makerTotals = new Map<string, MinimumOrderViolation>()
+
+    for (const item of orderItems) {
+      const product = productMap.get(item.product_id)
+      const maker = product?.makers
+
+      if (!product || !maker || maker.minimum_order <= 0) {
+        continue
+      }
+
+      const current = makerTotals.get(maker.id)
+      const lineTotal = product.cost_price * item.quantity
+
+      if (current) {
+        current.currentTotal += lineTotal
+        current.shortage = Math.max(current.minimumOrder - current.currentTotal, 0)
+        continue
+      }
+
+      makerTotals.set(maker.id, {
+        makerId: maker.id,
+        makerName: maker.maker_name,
+        minimumOrder: maker.minimum_order,
+        currentTotal: lineTotal,
+        shortage: Math.max(maker.minimum_order - lineTotal, 0),
+      })
+    }
+
+    const violations = Array.from(makerTotals.values())
+      .filter(maker => maker.currentTotal < maker.minimumOrder)
+      .sort((a, b) => a.makerName.localeCompare(b.makerName, "ja"))
+
+    if (violations.length > 0) {
+      setMinimumOrderViolations(violations)
+      setIsMinimumOrderDialogOpen(true)
+      return
+    }
+
     setIsSubmitting(true)
 
     const { data, error } = await supabase.rpc("create_order_with_items", {
@@ -485,6 +552,14 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
       hour: "2-digit",
       minute: "2-digit",
     })
+  }
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat("ja-JP", {
+      style: "currency",
+      currency: "JPY",
+      maximumFractionDigits: 0,
+    }).format(value)
   }
 
   if (isLoading) {
@@ -956,6 +1031,34 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
           </Button>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={isMinimumOrderDialogOpen} onOpenChange={setIsMinimumOrderDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>最低発注金額に達していないメーカーがあります</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm">
+                <p>以下のメーカーは最低発注金額を下回っているため、このままでは発注できません。</p>
+                <div className="space-y-2 rounded-md border bg-muted/50 p-3">
+                  {minimumOrderViolations.map((violation) => (
+                    <div key={violation.makerId} className="rounded-md bg-background p-3">
+                      <p className="font-medium text-foreground">{violation.makerName}</p>
+                      <p>現在の発注金額: {formatCurrency(violation.currentTotal)}</p>
+                      <p>最低発注金額: {formatCurrency(violation.minimumOrder)}</p>
+                      <p className="text-destructive">不足額: {formatCurrency(violation.shortage)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setIsMinimumOrderDialogOpen(false)}>
+              内容を確認する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

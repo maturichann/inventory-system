@@ -11,6 +11,11 @@ export function MainLayout({ children }: MainLayoutProps) {
   const pathname = usePathname()
   // /store/[code] のみマッチ（/stores は除外）
   const isStorePage = pathname?.startsWith("/store/")
+  const isPrintPage = pathname === "/purchasing/print"
+
+  if (isPrintPage) {
+    return <>{children}</>
+  }
 
   if (isStorePage) {
     return (
