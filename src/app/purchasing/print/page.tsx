@@ -19,10 +19,8 @@ type PrintItem = {
   level8: string | null
   maker_name: string
   maker_id: string
-  supplier: string | null
   store_name: string
   store_code: string
-  order_number: string
   quantity: number
   notes: string | null
 }
@@ -78,7 +76,6 @@ function PrintPageContent() {
           notes,
           orders!inner (
             id,
-            order_number,
             status,
             stores ( id, store_name, store_code )
           ),
@@ -86,7 +83,6 @@ function PrintPageContent() {
             id,
             product_code,
             product_name,
-            supplier,
             level1, level2, level3, level4, level5, level6, level7, level8,
             makers!inner ( id, maker_name )
           )
@@ -121,10 +117,8 @@ function PrintPageContent() {
           level8: row.products?.level8 ?? null,
           maker_name: row.products?.makers?.maker_name ?? "未設定",
           maker_id: row.products?.makers?.id ?? "unknown",
-          supplier: row.products?.supplier ?? null,
           store_name: row.orders?.stores?.store_name ?? "",
           store_code: row.orders?.stores?.store_code ?? "",
-          order_number: row.orders?.order_number ?? "",
           quantity: row.quantity ?? 0,
           notes: row.notes ?? null,
         }))

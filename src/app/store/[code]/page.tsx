@@ -96,7 +96,7 @@ const LINE_ATTRIBUTE_ORDER: Record<string, string[]> = {
 function parseExtensionProduct(product: ProductWithCategory): ParsedExtProduct | null {
   const name = product.product_name
 
-  // NUMEROフラットラッシュ: "NUMEROフラットラッシュマットカラー長さMIX SCカール カラー名"
+  // NUMEROフラットラッシュカラー: "NUMEROフラットラッシュマットカラー長さMIX SCカール カラー名"
   const numeroMatch = name.match(/^NUMEROフラットラッシュ.*長さ(\S+)\s+(\S+)カール\s+(.+)$/)
   if (numeroMatch) {
     return {

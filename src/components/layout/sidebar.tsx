@@ -73,24 +73,47 @@ const STORAGE_KEY = "sidebar:collapsedGroups"
 
 export function Sidebar() {
   const pathname = usePathname()
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
-    if (typeof window === "undefined") return new Set()
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [hydrated, setHydrated] = useState(false)
+
+  // 初回マウント時に localStorage から開閉状態を復元（hydration mismatch を避けるため useState ではなく useEffect 内で行う）
+  useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY)
-      if (raw) return new Set(JSON.parse(raw) as string[])
+      const raw = localStorage.getItem(STORAGE_KEY)
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (raw) setCollapsed(new Set(JSON.parse(raw) as string[]))
     } catch {
       // ignore invalid JSON
     }
-    return new Set()
-  })
+    setHydrated(true)
+  }, [])
+
+  // pathname 変更ごとに、現在ページを含むグループは強制的に展開（active項目の見失い防止）
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCollapsed((prev) => {
+      let next = prev
+      for (const group of navigationGroups) {
+        const hasActiveChild = group.items.some((item) =>
+          pathname === item.href || pathname?.startsWith(`${item.href}/`)
+        )
+        if (hasActiveChild && next.has(group.label)) {
+          if (next === prev) next = new Set(prev)
+          next.delete(group.label)
+        }
+      }
+      return next
+    })
+  }, [pathname])
 
   useEffect(() => {
+    if (!hydrated) return
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(collapsed)))
     } catch {
       // storage not available
     }
-  }, [collapsed])
+  }, [collapsed, hydrated])
 
   const toggleGroup = (label: string) => {
     setCollapsed((prev) => {
