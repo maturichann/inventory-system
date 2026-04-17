@@ -86,7 +86,7 @@ type ParsedExtProduct = {
 
 // 商品ラインごとの属性表示順
 const LINE_ATTRIBUTE_ORDER: Record<string, string[]> = {
-  "NUMEROフラットラッシュ": ["カール", "長さ", "カラー"],
+  "NUMEROフラットラッシュカラー": ["カール", "長さ", "カラー"],
   "ボリュームラッシュリュクス": ["カール", "長さ"],
   "ベルシアエクステ（フラットラッシュ）": ["カール", "太さ", "長さ"],
   "ベルシアエクステ（フラットブラウン）": ["カール", "長さ"],
@@ -101,7 +101,7 @@ function parseExtensionProduct(product: ProductWithCategory): ParsedExtProduct |
   if (numeroMatch) {
     return {
       product,
-      line: "NUMEROフラットラッシュ",
+      line: "NUMEROフラットラッシュカラー",
       attributes: {
         "カール": numeroMatch[2],
         "長さ": numeroMatch[1],
