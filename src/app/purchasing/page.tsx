@@ -359,15 +359,15 @@ export default function PurchasingPage() {
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <span className="text-xs text-muted-foreground self-center mr-1">PDF出力:</span>
-            {["事務所", "金本", "ベルシア"].map((s) => (
+            {["事務所", "金本さん", "べルシア"].map((m) => (
               <Button
-                key={s}
+                key={m}
                 size="sm"
                 variant="outline"
-                onClick={() => window.open(`/purchasing/print?supplier=${encodeURIComponent(s)}`, "_blank", "noopener,noreferrer")}
+                onClick={() => window.open(`/purchasing/print?maker=${encodeURIComponent(m)}`, "_blank", "noopener,noreferrer")}
               >
                 <FileText className="size-3.5 mr-1" />
-                {s}
+                {m}
               </Button>
             ))}
           </div>

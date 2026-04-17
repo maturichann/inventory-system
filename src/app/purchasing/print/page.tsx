@@ -53,14 +53,14 @@ type MakerBlock = {
 
 function PrintPageContent() {
   const searchParams = useSearchParams()
-  const supplier = searchParams.get("supplier") ?? ""
+  const makerName = searchParams.get("maker") ?? searchParams.get("supplier") ?? ""
   const [makerBlocks, setMakerBlocks] = useState<MakerBlock[]>([])
-  const [isLoading, setIsLoading] = useState(!!supplier)
+  const [isLoading, setIsLoading] = useState(!!makerName)
   const [totalItems, setTotalItems] = useState(0)
   const [totalQuantity, setTotalQuantity] = useState(0)
 
   useEffect(() => {
-    if (!supplier) return
+    if (!makerName) return
 
     const supabase = createClient()
     let cancelled = false
@@ -88,10 +88,10 @@ function PrintPageContent() {
             product_name,
             supplier,
             level1, level2, level3, level4, level5, level6, level7, level8,
-            makers ( id, maker_name )
+            makers!inner ( id, maker_name )
           )
         `)
-        .eq("products.supplier", supplier)
+        .eq("products.makers.maker_name", makerName)
         .in("orders.status", ["pending", "processing"])
         .or("fulfilled_from.eq.supplier,fulfilled_from.is.null")
 
@@ -200,7 +200,7 @@ function PrintPageContent() {
     return () => {
       cancelled = true
     }
-  }, [supplier])
+  }, [makerName])
 
   useEffect(() => {
     if (!isLoading && makerBlocks.length > 0) {
@@ -316,7 +316,7 @@ function PrintPageContent() {
 
       <div className="print-header">
         <div>
-          <h1 className="print-title">購入リスト — {supplier || "（仕入先未指定）"}</h1>
+          <h1 className="print-title">購入リスト — {makerName || "（メーカー未指定）"}</h1>
         </div>
         <div className="print-meta">
           <div>発行日: {dateStr}</div>
