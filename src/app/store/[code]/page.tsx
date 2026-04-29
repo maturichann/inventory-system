@@ -187,7 +187,9 @@ function isDocumentCategory(categoryName: string | null | undefined) {
 }
 
 function getQuantityStep(categoryName: string | null | undefined) {
-  return isDocumentCategory(categoryName) ? 100 : 1
+  // 書類系は100単位の強制ではなく、入力欄幅を広げるための判定だけに使う（実際のstepは1）
+  void categoryName
+  return 1
 }
 
 function getColorSwatch(colorName: string) {
@@ -371,13 +373,20 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
     return products.filter((product) => product.categories?.name === selectedCategory)
   }, [products, selectedCategory])
 
+  // 階層パース可能なエクステ商品のみ階層UIへ。エクステその他（リムーバー等）は通常商品扱い。
   const extensionCandidateProducts = useMemo(
-    () => visibleProductsByCategory.filter((product) => product.categories?.is_extension === true),
+    () =>
+      visibleProductsByCategory.filter(
+        (product) => product.categories?.is_extension === true && parseExtensionProduct(product) !== null
+      ),
     [visibleProductsByCategory]
   )
 
   const regularCandidateProducts = useMemo(
-    () => visibleProductsByCategory.filter((product) => product.categories?.is_extension !== true),
+    () =>
+      visibleProductsByCategory.filter(
+        (product) => product.categories?.is_extension !== true || parseExtensionProduct(product) === null
+      ),
     [visibleProductsByCategory]
   )
 
@@ -600,10 +609,6 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
         return
       }
 
-      if (isDocumentCategory(item.category_name) && (item.quantity < 100 || item.quantity % 100 !== 0)) {
-        alert(`「${item.product_name}」の数量は100単位で入力してください`)
-        return
-      }
     }
 
     const productMap = new Map(products.map(product => [product.id, product]))
@@ -1201,21 +1206,27 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
               </div>
 
               <div className="space-y-4">
-                <Card className="sticky top-4">
-                  <CardHeader>
+                <Card className="sticky top-4 flex max-h-[calc(100dvh-2rem)] flex-col">
+                  <CardHeader className="shrink-0">
                     <CardTitle className="flex items-center gap-2">
                       <ShoppingCart className="size-5" />
                       発注内容
+                      {orderItems.length > 0 && (
+                        <Badge variant="secondary" className="ml-auto">
+                          {orderItems.length}点
+                        </Badge>
+                      )}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="flex min-h-0 flex-1 flex-col">
                     {orderItems.length === 0 ? (
                       <p className="py-8 text-center text-muted-foreground">
                         商品を選択してください
                       </p>
                     ) : (
-                      <div className="space-y-4">
-                        <div className="space-y-3">
+                      <div className="flex min-h-0 flex-1 flex-col gap-4">
+                        <div className="-mx-2 min-h-0 flex-1 overflow-y-auto px-2">
+                         <div className="space-y-3">
                           {orderItems.map((item) => (
                             <div
                               key={item.product_id}
@@ -1227,7 +1238,7 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
                                   <p className="text-sm text-muted-foreground">{item.product_code}</p>
                                   {isDocumentCategory(item.category_name) && (
                                     <Badge variant="outline" className="text-xs">
-                                      100単位で発注
+                                      100単位の目安あり
                                     </Badge>
                                   )}
                                 </div>
@@ -1278,6 +1289,7 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
                               />
                             </div>
                           ))}
+                         </div>
                         </div>
 
                         <div className="border-t pt-4">
