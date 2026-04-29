@@ -186,9 +186,8 @@ function isDocumentCategory(categoryName: string | null | undefined) {
   return DOCUMENT_CATEGORY_KEYWORDS.some((keyword) => categoryName.includes(keyword))
 }
 
-function getQuantityStep(categoryName: string | null | undefined) {
-  // 書類系は100単位の強制ではなく、入力欄幅を広げるための判定だけに使う（実際のstepは1）
-  void categoryName
+// 書類系は実数量は1単位刻み（強制なし）。入力欄幅を広げる用途は isDocumentCategory で別途判定。
+function getQuantityStep(_categoryName: string | null | undefined) {
   return 1
 }
 
@@ -608,10 +607,22 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
         alert("数量は1〜99999の範囲で入力してください")
         return
       }
-
     }
 
     const productMap = new Map(products.map(product => [product.id, product]))
+
+    // 単価未設定（0円）の商品があると最低発注金額判定が機能しないため、警告して止める
+    const zeroPriceItems = orderItems.filter((item) => {
+      const product = productMap.get(item.product_id)
+      const maker = product?.makers
+      return product && maker && maker.minimum_order > 0 && (product.unit_price ?? 0) <= 0
+    })
+    if (zeroPriceItems.length > 0) {
+      const names = zeroPriceItems.map((it) => `・${it.product_name}`).join("\n")
+      alert(`次の商品は単価が未設定（0円）のため、最低発注金額の判定ができません。商品マスターで単価を入力してから発注してください。\n\n${names}`)
+      return
+    }
+
     const makerTotals = new Map<string, MinimumOrderViolation>()
 
     for (const item of orderItems) {

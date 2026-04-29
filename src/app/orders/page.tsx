@@ -43,13 +43,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Plus, Search, Eye, Check, Printer, Package, Loader2, Trash2 } from "lucide-react"
 import { formatDate, formatDateTime } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
-import type { Order, OrderItem, Store, Staff, Product, HqInventory } from "@/types/database"
+import type { Order, OrderItem, Store, Product, HqInventory } from "@/types/database"
 
 type OrderStatus = "pending" | "processing" | "completed" | "cancelled"
 
 type OrderWithDetails = Order & {
   stores: Store | null
-  staff: Staff | null
   order_items: (OrderItem & {
     products: (Product & {
       hq_inventory: HqInventory | null
@@ -64,7 +63,6 @@ type ProductWithInventory = Product & {
 export default function OrdersPage() {
   const [orders, setOrders] = useState<OrderWithDetails[]>([])
   const [stores, setStores] = useState<Store[]>([])
-  const [staffList, setStaffList] = useState<Staff[]>([])
   const [products, setProducts] = useState<ProductWithInventory[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
@@ -74,7 +72,6 @@ export default function OrdersPage() {
   const [isNewOrderDialogOpen, setIsNewOrderDialogOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [newOrderStoreId, setNewOrderStoreId] = useState("")
-  const [newOrderStaffId, setNewOrderStaffId] = useState("")
   const [orderItems, setOrderItems] = useState<{ product_id: string; quantity: number }[]>([])
   
   // 選択状態の管理
@@ -87,13 +84,12 @@ export default function OrdersPage() {
   const fetchData = async () => {
     setIsLoading(true)
 
-    const [ordersRes, storesRes, staffRes, productsRes] = await Promise.all([
+    const [ordersRes, storesRes, productsRes] = await Promise.all([
       supabase
         .from("orders")
         .select(`
           *,
           stores (*),
-          staff (*),
           order_items (
             *,
             products (
@@ -104,7 +100,6 @@ export default function OrdersPage() {
         `)
         .order("created_at", { ascending: false }),
       supabase.from("stores").select("*").eq("is_active", true).order("store_name"),
-      supabase.from("staff").select("*").eq("is_active", true).order("name"),
       supabase
         .from("products")
         .select(`*, hq_inventory (*)`)
@@ -117,9 +112,6 @@ export default function OrdersPage() {
     }
     if (storesRes.data) {
       setStores(storesRes.data)
-    }
-    if (staffRes.data) {
-      setStaffList(staffRes.data)
     }
     if (productsRes.data) {
       setProducts(productsRes.data as ProductWithInventory[])
@@ -221,16 +213,10 @@ export default function OrdersPage() {
   const handleProcessOrder = async (order: OrderWithDetails) => {
     setIsSaving(true)
 
-    // デフォルト担当者: 浅野さん
-    const asano = staffList.find(s => s.name.includes("浅野"))
-    const assignedStaffId = asano?.id || staffList[0]?.id || null
-
     const { error } = await supabase
       .from("orders")
       .update({
         status: "processing",
-        assigned_staff_id: assignedStaffId,
-        assignment_type: "auto",
       })
       .eq("id", order.id)
 
@@ -302,15 +288,12 @@ export default function OrdersPage() {
 
     setIsSaving(true)
 
-    const staffId = newOrderStaffId && newOrderStaffId !== "auto" ? newOrderStaffId : null
-
     const { data, error } = await supabase.rpc("create_order_with_items", {
       p_store_id: newOrderStoreId,
       p_items: orderItems.map(item => ({
         product_id: item.product_id,
         quantity: item.quantity,
       })),
-      p_staff_id: staffId,
     })
 
     if (error) {
@@ -331,7 +314,6 @@ export default function OrdersPage() {
     setIsSaving(false)
     setIsNewOrderDialogOpen(false)
     setNewOrderStoreId("")
-    setNewOrderStaffId("")
     setOrderItems([])
     fetchData()
   }
