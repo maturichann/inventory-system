@@ -274,6 +274,7 @@ function PrintPageContent() {
         }
         .qty { text-align: right; font-weight: 600; white-space: nowrap; }
         .stores { font-size: 10px; color: #333; }
+        .notes { font-size: 10px; color: #444; white-space: pre-wrap; word-break: break-word; }
         .print-toolbar {
           display: flex;
           gap: 8px;
@@ -327,30 +328,39 @@ function PrintPageContent() {
             <table className="print-table">
               <thead>
                 <tr>
-                  <th style={{ width: "16%" }}>商品コード</th>
+                  <th style={{ width: "14%" }}>商品コード</th>
                   <th>商品名</th>
-                  <th style={{ width: "22%" }}>仕様</th>
+                  <th style={{ width: "18%" }}>仕様</th>
                   <th style={{ width: "8%" }}>数量</th>
-                  <th style={{ width: "28%" }}>店舗内訳</th>
+                  <th style={{ width: "22%" }}>店舗内訳</th>
+                  <th style={{ width: "20%" }}>備考</th>
                 </tr>
               </thead>
               <tbody>
-                {block.products.map(p => (
-                  <tr key={p.product_id}>
-                    <td>{p.product_code}</td>
-                    <td>{p.product_name}</td>
-                    <td>{p.levels.join(" / ")}</td>
-                    <td className="qty">{p.total_quantity}</td>
-                    <td className="stores">
-                      {p.stores.map((s, i) => (
-                        <span key={s.store_code}>
-                          {i > 0 && "、"}
-                          {s.store_name}: {s.quantity}
-                        </span>
-                      ))}
-                    </td>
-                  </tr>
-                ))}
+                {block.products.map(p => {
+                  const notesParts = p.stores
+                    .filter((s) => s.notes)
+                    .map((s) => `${s.store_name}: ${s.notes}`)
+                  return (
+                    <tr key={p.product_id}>
+                      <td>{p.product_code}</td>
+                      <td>{p.product_name}</td>
+                      <td>{p.levels.join(" / ")}</td>
+                      <td className="qty">{p.total_quantity}</td>
+                      <td className="stores">
+                        {p.stores.map((s, i) => (
+                          <span key={s.store_code}>
+                            {i > 0 && "、"}
+                            {s.store_name}: {s.quantity}
+                          </span>
+                        ))}
+                      </td>
+                      <td className="notes">
+                        {notesParts.length > 0 ? notesParts.join(" / ") : ""}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

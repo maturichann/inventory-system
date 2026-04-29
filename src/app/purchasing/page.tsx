@@ -25,7 +25,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
-import { Search, Loader2, ChevronDown, ChevronRight, Package, ShoppingBag, CheckCircle2, User, FileText } from "lucide-react"
+import { Search, Loader2, ChevronDown, ChevronRight, Package, ShoppingBag, CheckCircle2, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/client"
 
@@ -42,7 +42,6 @@ type OrderItemWithDetails = {
   store_name: string
   store_code: string
   order_number: string
-  default_staff_name: string | null
   notes: string | null
 }
 
@@ -69,8 +68,6 @@ type ProductSummary = {
   category_name: string
   total_quantity: number
   stores: StoreInfo[]
-  assignedStaff: string
-  defaultStaffName: string | null
   hqStock: number
 }
 
@@ -87,7 +84,6 @@ export default function PurchasingPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedMaker, setSelectedMaker] = useState<string>("all")
-  const [selectedStaff, setSelectedStaff] = useState<string>("all")
   // 店舗ごとのチェック状態（キー: product_id_store_code）
   const [checkedStores, setCheckedStores] = useState<Set<string>>(new Set())
   const [openMakers, setOpenMakers] = useState<Set<string>>(new Set())
@@ -121,16 +117,11 @@ export default function PurchasingPage() {
             id,
             product_code,
             product_name,
-            assigned_staff_id,
             makers (
               id,
               maker_name
             ),
             categories (
-              id,
-              name
-            ),
-            staff (
               id,
               name
             )
@@ -170,10 +161,8 @@ export default function PurchasingPage() {
         id: string
         product_code: string
         product_name: string
-        assigned_staff_id: string | null
         makers: { id: string; maker_name: string } | null
         categories: { id: string; name: string } | null
-        staff: { id: string; name: string } | null
       }
 
       return {
@@ -189,7 +178,6 @@ export default function PurchasingPage() {
         store_name: order?.stores?.store_name || "",
         store_code: order?.stores?.store_code || "",
         order_number: order?.order_number || "",
-        default_staff_name: product?.staff?.name || null,
         notes: item.notes || null,
       }
     })
@@ -205,10 +193,6 @@ export default function PurchasingPage() {
   const getHqStock = (productId: string): number => {
     const inv = hqInventory.find(i => i.product_id === productId)
     return inv?.quantity || 0
-  }
-
-  const getAssignedStaff = (_productId: string, defaultStaffName: string | null): string => {
-    return defaultStaffName || "浅野"
   }
 
   useEffect(() => {
@@ -259,8 +243,6 @@ export default function PurchasingPage() {
           notes: item.notes,
           checkKey: checkKey,
         }],
-        assignedStaff: getAssignedStaff(item.product_id, item.default_staff_name),
-        defaultStaffName: item.default_staff_name,
         hqStock: hqStock,
       })
     }
@@ -268,21 +250,19 @@ export default function PurchasingPage() {
     return acc
   }, [] as ProductSummary[])
 
-  // Update hqStock and assignedStaff
+  // Refresh hqStock once inventory data has loaded
   productSummaries.forEach(p => {
     p.hqStock = getHqStock(p.product_id)
-    p.assignedStaff = getAssignedStaff(p.product_id, p.defaultStaffName)
   })
 
-  // Filter by search, maker, and staff
+  // Filter by search, maker
   const filteredProducts = productSummaries.filter(product => {
     const matchesSearch =
       product.product_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       product.product_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
       product.maker_name.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesMaker = selectedMaker === "all" || product.maker_id === selectedMaker
-    const matchesStaff = selectedStaff === "all" || product.assignedStaff === selectedStaff
-    return matchesSearch && matchesMaker && matchesStaff
+    return matchesSearch && matchesMaker
   })
 
   // Group by maker
@@ -333,21 +313,12 @@ export default function PurchasingPage() {
     return product.stores.every(s => checkedStores.has(s.checkKey))
   }
 
-  // Get unique staff names for filter
-  const uniqueStaffNames = [...new Set(productSummaries.map(p => p.assignedStaff))].sort()
-
   // 全店舗数と完了店舗数をカウント
   const totalStoreOrders = filteredProducts.reduce((sum, p) => sum + p.stores.length, 0)
-  const checkedStoreOrders = filteredProducts.reduce((sum, p) => 
+  const checkedStoreOrders = filteredProducts.reduce((sum, p) =>
     sum + p.stores.filter(s => checkedStores.has(s.checkKey)).length, 0
   )
   const totalQuantity = filteredProducts.reduce((sum, p) => sum + p.total_quantity, 0)
-
-  // Count by staff
-  const staffCounts = uniqueStaffNames.reduce((acc, name) => {
-    acc[name] = filteredProducts.filter(p => p.assignedStaff === name).length
-    return acc
-  }, {} as Record<string, number>)
 
   return (
     <div className="space-y-6">
@@ -373,17 +344,6 @@ export default function PurchasingPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex gap-2 flex-wrap">
-            {uniqueStaffNames.map((name) => (
-              <Badge
-                key={name}
-                variant={name === "浅野" ? "default" : name === "金本" ? "secondary" : "outline"}
-                className="px-2 py-1"
-              >
-                {name} {staffCounts[name] || 0}
-              </Badge>
-            ))}
-          </div>
           <div className="text-right">
             <p className="text-sm text-muted-foreground">進捗（店舗単位）</p>
             <p className="text-lg font-bold">{checkedStoreOrders} / {totalStoreOrders}</p>
@@ -407,20 +367,6 @@ export default function PurchasingPage() {
                 className="pl-9"
               />
             </div>
-            <Select value={selectedStaff} onValueChange={setSelectedStaff}>
-              <SelectTrigger className="w-full sm:w-40">
-                <User className="size-4 mr-2" />
-                <SelectValue placeholder="担当者" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全員</SelectItem>
-                {uniqueStaffNames.map((name) => (
-                  <SelectItem key={name} value={name}>
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
             <Select value={selectedMaker} onValueChange={setSelectedMaker}>
               <SelectTrigger className="w-full sm:w-48">
                 <SelectValue placeholder="メーカー" />
@@ -486,7 +432,6 @@ export default function PurchasingPage() {
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead className="w-20">担当</TableHead>
                               <TableHead>商品コード</TableHead>
                               <TableHead>商品名</TableHead>
                               <TableHead>カテゴリ</TableHead>
@@ -503,18 +448,6 @@ export default function PurchasingPage() {
                                   key={product.product_id}
                                   className={allChecked ? "opacity-50 bg-muted/30" : ""}
                                 >
-                                  <TableCell>
-                                    <Badge
-                                      variant={
-                                        product.assignedStaff === "浅野" ? "default" :
-                                        product.assignedStaff === "金本" ? "secondary" :
-                                        product.assignedStaff === "未設定" ? "outline" : "secondary"
-                                      }
-                                      className="text-xs"
-                                    >
-                                      {product.assignedStaff}
-                                    </Badge>
-                                  </TableCell>
                                   <TableCell className="font-mono text-sm">
                                     {product.product_code}
                                   </TableCell>

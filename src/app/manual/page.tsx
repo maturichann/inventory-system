@@ -15,7 +15,6 @@ import {
   Package,
   ShoppingCart,
   ClipboardList,
-  Users,
   Factory,
   BarChart3,
   AlertTriangle,
@@ -100,21 +99,21 @@ export default function ManualPage() {
                     </div>
                   </div>
                   <div className="flex gap-3 rounded-lg bg-white p-4 shadow-sm">
-                    <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-purple-100">
-                      <Users className="size-5 text-purple-600" />
-                    </div>
-                    <div>
-                      <h4 className="font-medium">担当者振り分け</h4>
-                      <p className="text-sm text-muted-foreground">本部在庫の有無に応じて、購入担当者を自動で振り分けます。</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-3 rounded-lg bg-white p-4 shadow-sm">
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-orange-100">
                       <AlertTriangle className="size-5 text-orange-600" />
                     </div>
                     <div>
                       <h4 className="font-medium">在庫アラート</h4>
-                      <p className="text-sm text-muted-foreground">在庫が閾値を下回ると自動でアラート表示。欠品を防ぎます。</p>
+                      <p className="text-sm text-muted-foreground">本部在庫管理ONの商品で、在庫が閾値を下回ると自動でアラート表示。欠品を防ぎます。</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 rounded-lg bg-white p-4 shadow-sm">
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-rose-100">
+                      <Package className="size-5 text-rose-600" />
+                    </div>
+                    <div>
+                      <h4 className="font-medium">最低発注金額チェック</h4>
+                      <p className="text-sm text-muted-foreground">店舗発注時、メーカーごとの最低発注金額を下回るとアラートで止めます。</p>
                     </div>
                   </div>
                 </div>
@@ -149,42 +148,6 @@ export default function ManualPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>担当者の自動振り分けルール</CardTitle>
-              <CardDescription>
-                購入リストで表示される担当者の決定ロジック
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="p-3 text-left font-medium">条件</th>
-                      <th className="p-3 text-left font-medium">担当者</th>
-                      <th className="p-3 text-left font-medium">理由</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr className="border-b">
-                      <td className="p-3">本部在庫がある</td>
-                      <td className="p-3"><Badge variant="default">浅野さん</Badge></td>
-                      <td className="p-3 text-sm text-muted-foreground">本部から直接出荷するため</td>
-                    </tr>
-                    <tr>
-                      <td className="p-3">本部在庫がない</td>
-                      <td className="p-3"><Badge variant="secondary">商品の担当者設定</Badge></td>
-                      <td className="p-3 text-sm text-muted-foreground">ECサイトから購入するため</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <p className="mt-4 text-sm text-muted-foreground">
-                ※ 商品マスターで設定した「担当者ラベル」が、本部在庫がない場合のデフォルト担当者として使用されます。
-              </p>
-            </CardContent>
-          </Card>
         </div>
       )}
 
@@ -198,16 +161,31 @@ export default function ManualPage() {
                 店舗発注画面の使い方
               </CardTitle>
               <CardDescription>
-                店舗スタッフ向けの発注方法を説明します
+                店舗スタッフ向けの発注方法をわかりやすく説明します
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              <div className="rounded-lg border-2 border-red-300 bg-red-50 p-4">
+                <h4 className="mb-2 flex items-center gap-2 font-bold text-red-800">
+                  <AlertTriangle className="size-5" />
+                  必ず守ってほしいこと
+                </h4>
+                <ul className="space-y-2 text-sm text-red-800">
+                  <li className="flex gap-2"><span className="font-bold">①</span><span><strong>備考欄がある商品は、必ず備考を記入してください</strong>（カラー指定・サイズ・特記事項など、本部に伝えたいことを必ず書いてください）</span></li>
+                  <li className="flex gap-2"><span className="font-bold">②</span><span>商品名をよく確認してください。<strong>カール・長さ・カラー違いで似た商品が多い</strong>です（例: NUMEROフラットラッシュカラー SCカール 9mm アイスモーヴ 等）</span></li>
+                  <li className="flex gap-2"><span className="font-bold">③</span><span>送信前にカート内容を最終確認。<strong>送信すると本部に即届きます</strong></span></li>
+                  <li className="flex gap-2"><span className="font-bold">④</span><span><strong>書類系（メールDM・のし紙など）は100枚単位</strong>で発注してください</span></li>
+                  <li className="flex gap-2"><span className="font-bold">⑤</span><span>メーカーごとに<strong>最低発注金額</strong>があります。下回るとアラートが出て発注できません</span></li>
+                </ul>
+              </div>
+
               <div className="rounded-lg border bg-amber-50 p-4">
                 <h4 className="mb-2 font-medium text-amber-800">ポイント</h4>
                 <ul className="space-y-1 text-sm text-amber-700">
                   <li>• ログイン不要で、URLにアクセスするだけでOK</li>
                   <li>• スマートフォン・タブレットに最適化されています</li>
-                  <li>• 発注は約1分で完了します</li>
+                  <li>• カテゴリ「全て」でもエクステは「商品ライン → カール → 長さ → カラー」の順に選びます</li>
+                  <li>• 発注後でも「未処理」状態なら<strong>発注履歴から修正できます</strong>（処理中・完了は不可）</li>
                 </ul>
               </div>
 
@@ -223,27 +201,39 @@ export default function ManualPage() {
                     },
                     {
                       step: 2,
-                      title: "商品を選択",
-                      desc: "発注したい商品をタップしてカートに追加します。",
-                      tips: "検索やカテゴリ絞り込みで素早く見つけられます",
+                      title: "カテゴリを選ぶ",
+                      desc: "「カテゴリ」から商品の種類を選びます。「全て」でも目的の商品が探せます。",
+                      tips: "エクステは「ライン → カール → 長さ → カラー」の階層から選択します",
                     },
                     {
                       step: 3,
-                      title: "数量を調整",
-                      desc: "＋/−ボタン、または直接数字を入力して数量を設定します。",
-                      tips: "同じ商品をタップすると数量が増えます",
+                      title: "商品を選択",
+                      desc: "発注したい商品をタップしてカートに追加します。商品名は最後まで確認してから選んでください。",
+                      tips: "似た商品が並ぶ場合は、カラー・長さ・カールの違いに注意",
                     },
                     {
                       step: 4,
-                      title: "発注を送信",
-                      desc: "カートの内容を確認し、「発注を送信」ボタンをタップします。",
-                      tips: "送信前に内容をよく確認してください",
+                      title: "数量を入力",
+                      desc: "＋/−ボタン、または直接数量を入力します。",
+                      tips: "書類・メールDM・のし紙などは100枚単位（100, 200, 300 ...）で入力",
                     },
                     {
                       step: 5,
-                      title: "完了",
-                      desc: "発注番号が表示されたら完了です。",
-                      tips: "発注番号は控えておくと問い合わせ時に便利です",
+                      title: "備考を記入（重要）",
+                      desc: "備考欄がある商品は、本部に伝えたいことを必ず書いてください。カラー指定・在庫優先順位など。",
+                      tips: "備考欄が空だと本部で判断できないことがあります",
+                    },
+                    {
+                      step: 6,
+                      title: "金額エラーが出たら",
+                      desc: "「最低発注金額に達していないメーカーがあります」が出たら、不足額分の商品を追加してください。",
+                      tips: "メーカー単位で最低発注金額が決まっています",
+                    },
+                    {
+                      step: 7,
+                      title: "発注を送信",
+                      desc: "カート内容を最終確認し「発注を送信」をタップ。発注番号が表示されたら完了です。",
+                      tips: "発注番号はメモしておくと問い合わせ時に便利",
                     },
                   ].map((item) => (
                     <div key={item.step} className="flex gap-4 rounded-lg border p-4">
@@ -259,6 +249,44 @@ export default function ManualPage() {
                   ))}
                 </div>
               </div>
+
+              <Card className="border-blue-200 bg-blue-50/50">
+                <CardHeader>
+                  <CardTitle className="text-base">発注後の修正方法</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  <p>① 発注画面の上部タブ「<strong>発注履歴</strong>」をタップ</p>
+                  <p>② 修正したい発注（<Badge variant="secondary">未処理</Badge>のもの）の「<strong>修正</strong>」ボタンをタップ</p>
+                  <p>③ カートに発注内容が入るので、数量や備考を変えて「発注を送信」</p>
+                  <p className="mt-2 rounded bg-amber-100 p-2 text-amber-800">
+                    ※ <Badge variant="default" className="mx-1">処理中</Badge>または<Badge className="mx-1 bg-green-500">完了</Badge>の発注は修正できません。本部にご連絡ください。
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-rose-200 bg-rose-50/50">
+                <CardHeader>
+                  <CardTitle className="text-base">よくある間違い</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  <div>
+                    <p className="font-medium text-rose-900">❌ 似た商品名を選び間違える</p>
+                    <p className="text-muted-foreground">→ カール（SC/J/C）・長さ（9/10/11/12/MIX）・カラー名まで全部確認</p>
+                  </div>
+                  <div>
+                    <p className="font-medium text-rose-900">❌ 書類を1枚単位で発注</p>
+                    <p className="text-muted-foreground">→ 書類・メールDM・のし紙は<strong>100単位</strong>で発注（100, 200, 300...）</p>
+                  </div>
+                  <div>
+                    <p className="font-medium text-rose-900">❌ 備考欄を空にしたまま送信</p>
+                    <p className="text-muted-foreground">→ 備考欄がある商品は、必ず希望や注意点を記入</p>
+                  </div>
+                  <div>
+                    <p className="font-medium text-rose-900">❌ 発注送信後の連絡を忘れる</p>
+                    <p className="text-muted-foreground">→ 数量変更等は「発注履歴」から修正、処理中になったら本部に電話</p>
+                  </div>
+                </CardContent>
+              </Card>
             </CardContent>
           </Card>
         </div>
@@ -300,7 +328,7 @@ export default function ManualPage() {
                 <div className="rounded-lg border p-4">
                   <h5 className="mb-2 font-medium text-blue-600">2. 購入作業</h5>
                   <p className="text-sm text-muted-foreground">
-                    「購入リスト」画面に移動し、担当者でフィルタリング。ECサイトで購入し、チェックボックスで進捗管理します。
+                    「購入リスト」画面でメーカー別に集計を確認。ECサイトやPDF出力（事務所・金本さん・べルシア向け）を活用し、店舗ごとのチェックボックスで進捗管理します。
                   </p>
                 </div>
                 <div className="rounded-lg border p-4">
@@ -327,16 +355,17 @@ export default function ManualPage() {
               <div className="rounded-lg border bg-blue-50 p-4">
                 <h4 className="mb-2 font-medium text-blue-800">この画面の目的</h4>
                 <p className="text-sm text-blue-700">
-                  各店舗からの発注を商品別に集計し、メーカー順に表示します。担当者でフィルタリングして、自分が購入すべき商品だけを表示できます。
+                  各店舗からの発注を商品別に集計し、メーカー順に表示します。発注先ごとの仕入れ作業に使います。
                 </p>
               </div>
 
               <div className="space-y-2">
                 <h4 className="font-medium">使い方</h4>
                 <ol className="list-inside list-decimal space-y-2 text-sm text-muted-foreground">
-                  <li>担当者フィルターで自分の担当分を絞り込む</li>
-                  <li>メーカー別にECサイトで購入</li>
-                  <li>購入したらチェックボックスにチェック</li>
+                  <li>メーカーフィルター・検索で必要な商品を絞り込む</li>
+                  <li>「PDF出力（事務所/金本さん/べルシア）」ボタンで仕入先別の購入リストを印刷</li>
+                  <li>ECサイトや実店舗で購入</li>
+                  <li>店舗ごとにチェックを入れて進捗管理</li>
                   <li>進捗が画面上部に表示される</li>
                 </ol>
               </div>
@@ -414,7 +443,8 @@ export default function ManualPage() {
                     details: [
                       "商品コード・商品名の設定",
                       "カテゴリ・メーカーの紐付け",
-                      "担当者ラベルの設定（本部在庫がない時の購入担当）",
+                      "本部在庫管理ON/OFFの切替（在庫アラート対象を制御）",
+                      "削除は論理削除（is_active=false）に統一",
                     ],
                   },
                   {
@@ -423,7 +453,8 @@ export default function ManualPage() {
                     desc: "仕入先メーカーを管理します",
                     details: [
                       "メーカー名の登録",
-                      "購入リストでのグルーピングに使用",
+                      "最低発注金額（minimum_order）の設定",
+                      "購入リストでのグルーピングとPDF出力に使用",
                     ],
                   },
                   {
@@ -434,15 +465,6 @@ export default function ManualPage() {
                       "店舗名・店舗コードの設定",
                       "発注用URLの確認・コピー",
                       "店舗の有効/無効の切り替え",
-                    ],
-                  },
-                  {
-                    icon: Users,
-                    title: "担当者マスター",
-                    desc: "購入担当者を管理します",
-                    details: [
-                      "担当者名の登録",
-                      "商品マスターでの担当者ラベル選択に使用",
                     ],
                   },
                 ].map((item) => {
@@ -531,19 +553,21 @@ export default function ManualPage() {
                   </AccordionContent>
                 </AccordionItem>
                 <AccordionItem value="item-7">
-                  <AccordionTrigger>担当者の振り分けはどうやって決まりますか？</AccordionTrigger>
+                  <AccordionTrigger>店舗側で発注後に修正できますか？</AccordionTrigger>
                   <AccordionContent>
-                    <p className="mb-2">以下のルールで自動決定されます：</p>
-                    <ul className="list-inside list-disc space-y-1 text-sm">
-                      <li><strong>本部在庫がある場合</strong>：浅野さんが担当（本部から直接出荷）</li>
-                      <li><strong>本部在庫がない場合</strong>：商品マスターで設定した担当者が担当（EC購入）</li>
-                    </ul>
+                    はい、<strong>未処理（pending）</strong>の発注のみ店舗側で修正できます。発注画面の「発注履歴」タブから対象の発注の「修正」ボタンを押すと、カートに内容が読み込まれて編集→再送信できます。処理中・完了の発注は本部にご連絡ください。
                   </AccordionContent>
                 </AccordionItem>
                 <AccordionItem value="item-8">
                   <AccordionTrigger>発注の履歴は確認できますか？</AccordionTrigger>
                   <AccordionContent>
                     はい、発注管理画面で過去の発注履歴を確認できます。ステータスや期間でフィルタリングして検索することも可能です。在庫の変動履歴も本部在庫画面から確認できます。
+                  </AccordionContent>
+                </AccordionItem>
+                <AccordionItem value="item-9">
+                  <AccordionTrigger>最低発注金額のチェックはどう動きますか？</AccordionTrigger>
+                  <AccordionContent>
+                    店舗からの発注送信時、メーカーごとに「単価×数量」で合計を計算し、メーカーマスターで設定された最低発注金額を下回ると、不足額をアラートで表示し送信を止めます。最低発注金額が0のメーカーはチェック対象外です。
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { Fragment, useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -77,7 +77,7 @@ const initialFormData: ProductFormData = {
 
 // エクステ商品ライン判定（商品名から）
 function getExtensionLine(name: string): string | null {
-  if (name.match(/^NUMEROフラットラッシュ/)) return "NUMEROフラットラッシュ"
+  if (name.match(/^NUMEROフラットラッシュ/)) return "NUMEROフラットラッシュカラー"
   if (name.match(/^ボリュームラッシュリュクス/)) return "ボリュームラッシュリュクス"
   if (name.match(/^ベルシアエクステ.*フラットブラウン/)) return "ベルシアエクステ（フラットブラウン）"
   if (name.match(/^ベルシアエクステ.*フラットラッシュ/)) return "ベルシアエクステ（フラットラッシュ）"
@@ -96,6 +96,7 @@ export default function ProductsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [selectedMaker, setSelectedMaker] = useState<string>("all")
+  const [showInactiveProducts, setShowInactiveProducts] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [expandedLines, setExpandedLines] = useState<Set<string>>(new Set())
 
@@ -212,16 +213,33 @@ export default function ProductsPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (window.confirm("この商品を削除しますか？")) {
+    if (window.confirm("この商品を非アクティブにしますか？")) {
+      const [{ count: orderItemCount, error: orderItemError }, { count: inventoryCount, error: inventoryError }, { count: historyCount, error: historyError }, { count: supplierItemCount, error: supplierItemError }] = await Promise.all([
+        supabase.from("order_items").select("id", { count: "exact", head: true }).eq("product_id", id),
+        supabase.from("hq_inventory").select("id", { count: "exact", head: true }).eq("product_id", id),
+        supabase.from("inventory_history").select("id", { count: "exact", head: true }).eq("product_id", id),
+        supabase.from("supplier_order_items").select("id", { count: "exact", head: true }).eq("product_id", id),
+      ])
+
+      if (orderItemError || inventoryError || historyError || supplierItemError) {
+        console.error("Error checking product references:", orderItemError || inventoryError || historyError || supplierItemError)
+        alert("商品の参照状況の確認に失敗しました")
+        return
+      }
+
+      const hasReferences = [orderItemCount, inventoryCount, historyCount, supplierItemCount].some((count) => (count || 0) > 0)
       const { error } = await supabase
         .from("products")
-        .delete()
+        .update({ is_active: false })
         .eq("id", id)
 
       if (error) {
-        console.error("Error deleting product:", error)
-        alert("削除に失敗しました")
+        console.error("Error deactivating product:", error)
+        alert("商品を非アクティブ化できませんでした")
       } else {
+        if (hasReferences) {
+          alert("参照データがあるため、商品を非アクティブ化しました")
+        }
         fetchData()
       }
     }
@@ -235,11 +253,12 @@ export default function ProductsPage() {
   }, [selectedCategory, categories])
 
   const filteredProducts = products.filter(product => {
+    const matchesActive = showInactiveProducts || product.is_active
     const matchesSearch = product.product_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       product.product_code.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesCategory = selectedCategory === "all" || product.category_id === selectedCategory
     const matchesMaker = selectedMaker === "all" || product.maker_id === selectedMaker
-    return matchesSearch && matchesCategory && matchesMaker
+    return matchesActive && matchesSearch && matchesCategory && matchesMaker
   })
 
   // エクステカテゴリの場合、商品ラインでグループ化
@@ -304,7 +323,10 @@ export default function ProductsPage() {
       <TableCell className="font-mono text-sm">{product.product_code}</TableCell>
       <TableCell>
         <div>
-          <div className="font-medium">{product.product_name}</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="font-medium">{product.product_name}</div>
+            {!product.is_active && <Badge variant="outline">非アクティブ</Badge>}
+          </div>
           {product.level1 && (
             <div className="text-xs text-muted-foreground line-clamp-1">
               {[product.level1, product.level2, product.level3]
@@ -414,6 +436,16 @@ export default function ProductsPage() {
                 ))}
               </SelectContent>
             </Select>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="show-inactive-products"
+                checked={showInactiveProducts}
+                onCheckedChange={(checked) => setShowInactiveProducts(checked === true)}
+              />
+              <Label htmlFor="show-inactive-products" className="text-sm whitespace-nowrap">
+                非アクティブ商品を表示
+              </Label>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -446,9 +478,8 @@ export default function ProductsPage() {
               <TableBody>
                 {/* エクステ商品ライングループ */}
                 {lineGroups.map((group) => (
-                  <>
+                  <Fragment key={`line-${group.name}`}>
                     <TableRow
-                      key={`line-${group.name}`}
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => toggleLine(group.name)}
                     >
@@ -475,7 +506,7 @@ export default function ProductsPage() {
                     {expandedLines.has(group.name) &&
                       group.products.map(renderProductRow)
                     }
-                  </>
+                  </Fragment>
                 ))}
                 {/* 単品商品 */}
                 {singleProducts.map(renderProductRow)}

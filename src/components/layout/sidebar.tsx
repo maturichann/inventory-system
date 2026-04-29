@@ -38,6 +38,13 @@ const primaryNavigationItem: NavigationItem = {
 
 const navigationGroups: NavigationGroup[] = [
   {
+    label: "発注",
+    items: [
+      { name: "発注管理", href: "/orders", icon: ShoppingCart },
+      { name: "購入リスト", href: "/purchasing", icon: ShoppingBag },
+    ],
+  },
+  {
     label: "商品・在庫",
     items: [
       { name: "商品マスター", href: "/products", icon: Package },
@@ -47,17 +54,9 @@ const navigationGroups: NavigationGroup[] = [
     ],
   },
   {
-    label: "発注",
-    items: [
-      { name: "発注管理", href: "/orders", icon: ShoppingCart },
-      { name: "購入リスト", href: "/purchasing", icon: ShoppingBag },
-    ],
-  },
-  {
-    label: "組織",
+    label: "店舗",
     items: [
       { name: "店舗", href: "/stores", icon: Store },
-      { name: "担当者", href: "/staff", icon: Users },
     ],
   },
   {

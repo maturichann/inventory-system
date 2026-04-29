@@ -38,7 +38,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Plus, Trash2, ShoppingCart, Loader2, Check, Search, History, ChevronDown, ChevronRight, X } from "lucide-react"
+import { Plus, Trash2, ShoppingCart, Loader2, Check, Search, History, ChevronDown, ChevronRight, X, Pencil, Layers3 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import type { Store, Product, Category, Maker } from "@/types/database"
 
@@ -48,6 +48,7 @@ type ProductWithCategory = Product & {
 }
 
 type CartItem = {
+  order_item_id?: string
   product_id: string
   product_code: string
   product_name: string
@@ -62,8 +63,11 @@ type OrderHistory = {
   status: string
   created_at: string
   items: {
+    id: string
+    product_id: string
     product_name: string
     product_code: string
+    category_name: string
     quantity: number
     notes: string | null
   }[]
@@ -160,6 +164,66 @@ type ExtensionLine = {
   attributeOrder: string[]
 }
 
+const DOCUMENT_CATEGORY_KEYWORDS = ["書類", "メールDM", "のし紙"]
+
+const COLOR_SWATCHES: Array<{ keywords: string[]; color: string }> = [
+  { keywords: ["ブラック", "黒"], color: "#1f2937" },
+  { keywords: ["ブラウン", "茶", "モカ"], color: "#8b5e3c" },
+  { keywords: ["モーヴ", "パープル", "紫"], color: "#8b5cf6" },
+  { keywords: ["ピンク", "ローズ"], color: "#ec4899" },
+  { keywords: ["レッド", "赤", "ワイン"], color: "#dc2626" },
+  { keywords: ["オレンジ", "コーラル"], color: "#f97316" },
+  { keywords: ["イエロー", "黄", "ゴールド"], color: "#eab308" },
+  { keywords: ["グリーン", "緑", "オリーブ"], color: "#65a30d" },
+  { keywords: ["ブルー", "青", "ネイビー"], color: "#2563eb" },
+  { keywords: ["グレー", "灰", "シルバー"], color: "#9ca3af" },
+  { keywords: ["ベージュ", "アイボリー", "クリーム"], color: "#d6c3a1" },
+  { keywords: ["ホワイト", "白"], color: "#f8fafc" },
+]
+
+function isDocumentCategory(categoryName: string | null | undefined) {
+  if (!categoryName) return false
+  return DOCUMENT_CATEGORY_KEYWORDS.some((keyword) => categoryName.includes(keyword))
+}
+
+function getQuantityStep(categoryName: string | null | undefined) {
+  return isDocumentCategory(categoryName) ? 100 : 1
+}
+
+function getColorSwatch(colorName: string) {
+  const matched = COLOR_SWATCHES.find(({ keywords }) =>
+    keywords.some((keyword) => colorName.includes(keyword))
+  )
+
+  return matched?.color ?? "#cbd5e1"
+}
+
+function getProductDisplay(product: ProductWithCategory) {
+  const parsed = parseExtensionProduct(product)
+  if (!parsed) {
+    return {
+      title: product.product_name,
+      subtitle: product.product_code,
+      emphasis: null as string | null,
+      parsed: null as ParsedExtProduct | null,
+    }
+  }
+
+  const emphasis =
+    parsed.attributes["カラー"] ||
+    parsed.attributes["長さ"] ||
+    parsed.attributes["太さ"] ||
+    parsed.attributes["カール"] ||
+    null
+
+  return {
+    title: parsed.line,
+    subtitle: product.product_code,
+    emphasis,
+    parsed,
+  }
+}
+
 export default function StoreOrderPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params)
   const [store, setStore] = useState<Store | null>(null)
@@ -173,11 +237,14 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
   const [isMinimumOrderDialogOpen, setIsMinimumOrderDialogOpen] = useState(false)
   const [minimumOrderViolations, setMinimumOrderViolations] = useState<MinimumOrderViolation[]>([])
   const [orderNumber, setOrderNumber] = useState("")
+  const [lastSubmitMode, setLastSubmitMode] = useState<"create" | "update">("create")
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [notFound, setNotFound] = useState(false)
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
   const [activeTab, setActiveTab] = useState("order")
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null)
+  const [editingOrderNumber, setEditingOrderNumber] = useState("")
 
   // エクステ階層選択用
   const [selectedLine, setSelectedLine] = useState<string | null>(null)
@@ -198,9 +265,14 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
         order_items (
           quantity,
           notes,
+          id,
+          product_id,
           products (
             product_name,
-            product_code
+            product_code,
+            categories (
+              name
+            )
           )
         )
       `)
@@ -222,8 +294,11 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
       created_at: order.created_at,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       items: (order.order_items || []).map((item: any) => ({
+        id: item.id,
+        product_id: item.product_id,
         product_name: item.products?.product_name || "",
         product_code: item.products?.product_code || "",
+        category_name: item.products?.categories?.name || "-",
         quantity: item.quantity,
         notes: item.notes || null,
       })),
@@ -286,19 +361,43 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
 
   const categories = [...new Set(products.map(p => p.categories?.name).filter(Boolean))]
 
-  // エクステカテゴリ判定
   const selectedCategoryObj = useMemo(() => {
     if (selectedCategory === "all") return null
     return products.find(p => p.categories?.name === selectedCategory)?.categories || null
   }, [selectedCategory, products])
 
-  const isExtensionCategory = selectedCategoryObj?.is_extension === true
+  const visibleProductsByCategory = useMemo(() => {
+    if (selectedCategory === "all") return products
+    return products.filter((product) => product.categories?.name === selectedCategory)
+  }, [products, selectedCategory])
+
+  const extensionCandidateProducts = useMemo(
+    () => visibleProductsByCategory.filter((product) => product.categories?.is_extension === true),
+    [visibleProductsByCategory]
+  )
+
+  const regularCandidateProducts = useMemo(
+    () => visibleProductsByCategory.filter((product) => product.categories?.is_extension !== true),
+    [visibleProductsByCategory]
+  )
+
+  const isExtensionCategory = extensionCandidateProducts.length > 0 && (
+    selectedCategory === "all" || selectedCategoryObj?.is_extension === true
+  )
+
+  const extensionSearchFilteredProducts = useMemo(() => {
+    if (!isExtensionCategory) return []
+    return extensionCandidateProducts.filter((product) =>
+      product.product_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      product.product_code.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+  }, [extensionCandidateProducts, isExtensionCategory, searchQuery])
 
   // エクステ商品を商品ラインと単品に分類
   const { extensionLines, singleExtProducts } = useMemo(() => {
     if (!isExtensionCategory) return { extensionLines: [], singleExtProducts: [] }
 
-    const extProducts = products.filter(p => p.categories?.name === selectedCategory)
+    const extProducts = extensionSearchFilteredProducts
     const lineMap: Record<string, ParsedExtProduct[]> = {}
     const singles: ProductWithCategory[] = []
 
@@ -329,7 +428,7 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
     }
 
     return { extensionLines: lines, singleExtProducts: singles }
-  }, [isExtensionCategory, selectedCategory, products])
+  }, [extensionSearchFilteredProducts, isExtensionCategory])
 
   // 選択中のラインで、現在の選択に基づいてフィルタリング
   const currentLineData = useMemo(() => {
@@ -368,29 +467,26 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
 
   // 通常商品のフィルタリング（エクステ以外）
   const filteredProducts = useMemo(() => {
-    if (isExtensionCategory) return [] // エクステは専用UIで表示
-    return products.filter(product => {
+    return regularCandidateProducts.filter(product => {
       const matchesSearch = product.product_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         product.product_code.toLowerCase().includes(searchQuery.toLowerCase())
-      const matchesCategory = selectedCategory === "all" || product.categories?.name === selectedCategory
-      return matchesSearch && matchesCategory
+      return matchesSearch
     })
-  }, [products, searchQuery, selectedCategory, isExtensionCategory])
+  }, [regularCandidateProducts, searchQuery])
 
   // エクステ単品のフィルタリング（検索対応）
   const filteredSingleExtProducts = useMemo(() => {
     if (!isExtensionCategory) return []
-    return singleExtProducts.filter(p =>
-      p.product_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.product_code.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-  }, [isExtensionCategory, singleExtProducts, searchQuery])
+    return singleExtProducts
+  }, [isExtensionCategory, singleExtProducts])
 
   const handleAddProduct = (product: ProductWithCategory) => {
+    const step = getQuantityStep(product.categories?.name)
+
     if (orderItems.some(item => item.product_id === product.id)) {
       setOrderItems(orderItems.map(item =>
         item.product_id === product.id
-          ? { ...item, quantity: item.quantity + 1 }
+          ? { ...item, quantity: item.quantity + step }
           : item
       ))
       return
@@ -401,7 +497,7 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
       product_code: product.product_code,
       product_name: product.product_name,
       category_name: product.categories?.name || "-",
-      quantity: 1,
+      quantity: step,
       notes: "",
     }])
   }
@@ -437,12 +533,75 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
     setOrderItems(orderItems.filter(item => item.product_id !== productId))
   }
 
+  const resetEditingOrder = () => {
+    setEditingOrderId(null)
+    setEditingOrderNumber("")
+  }
+
+  const handleEditOrder = (order: OrderHistory) => {
+    setEditingOrderId(order.id)
+    setEditingOrderNumber(order.order_number)
+    setOrderItems(order.items.map((item) => ({
+      order_item_id: item.id,
+      product_id: item.product_id,
+      product_code: item.product_code,
+      product_name: item.product_name,
+      category_name: item.category_name,
+      quantity: item.quantity,
+      notes: item.notes || "",
+    })))
+    setActiveTab("order")
+  }
+
+  const getOrderItemFulfillment = async (items: CartItem[]) => {
+    const productIds = [...new Set(items.map((item) => item.product_id))]
+    const [{ data: productRows, error: productError }, { data: inventoryRows, error: inventoryError }] = await Promise.all([
+      supabase
+        .from("products")
+        .select("id, track_hq_inventory")
+        .in("id", productIds),
+      supabase
+        .from("hq_inventory")
+        .select("product_id, quantity")
+        .in("product_id", productIds),
+    ])
+
+    if (productError || inventoryError) {
+      throw productError || inventoryError
+    }
+
+    const productMap = new Map((productRows || []).map((product) => [product.id, product]))
+    const inventoryMap = new Map((inventoryRows || []).map((inventory) => [inventory.product_id, inventory.quantity]))
+
+    return items.map((item) => {
+      const product = productMap.get(item.product_id)
+      const hqStock = inventoryMap.get(item.product_id) ?? 0
+      const trackHqInventory = product?.track_hq_inventory ?? true
+      const fulfilledFrom = !trackHqInventory
+        ? "supplier"
+        : hqStock >= item.quantity
+          ? "hq"
+          : "supplier"
+
+      return {
+        ...item,
+        hqStockAtOrder: hqStock,
+        fulfilledFrom,
+      }
+    })
+  }
+
   const handleSubmitOrder = async () => {
     if (!store || orderItems.length === 0) return
 
     for (const item of orderItems) {
       if (item.quantity < 1 || item.quantity > 99999) {
         alert("数量は1〜99999の範囲で入力してください")
+        return
+      }
+
+      if (isDocumentCategory(item.category_name) && (item.quantity < 100 || item.quantity % 100 !== 0)) {
+        alert(`「${item.product_name}」の数量は100単位で入力してください`)
         return
       }
     }
@@ -459,7 +618,8 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
       }
 
       const current = makerTotals.get(maker.id)
-      const lineTotal = product.cost_price * item.quantity
+      // 最低発注金額の判定は単価（unit_price）ベース。cost_priceは未入力の商品が多いため使用しない。
+      const lineTotal = (product.unit_price ?? 0) * item.quantity
 
       if (current) {
         current.currentTotal += lineTotal
@@ -488,35 +648,139 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
 
     setIsSubmitting(true)
 
-    const { data, error } = await supabase.rpc("create_order_with_items", {
-      p_store_id: store.id,
-      p_items: orderItems.map(item => ({
-        product_id: item.product_id,
-        quantity: item.quantity,
-        notes: item.notes || null,
-      })),
-    })
+    if (editingOrderId) {
+      const { data: orderData, error: orderError } = await supabase
+        .from("orders")
+        .select("id, order_number, status")
+        .eq("id", editingOrderId)
+        .single()
 
-    if (error) {
-      console.error("Error creating order:", error)
-      alert("発注の送信に失敗しました")
-      setIsSubmitting(false)
-      return
+      if (orderError || !orderData) {
+        console.error("Error fetching order for update:", orderError)
+        alert("更新対象の発注が見つかりません")
+        setIsSubmitting(false)
+        return
+      }
+
+      if (orderData.status !== "pending") {
+        alert("未処理の発注のみ修正できます")
+        resetEditingOrder()
+        setIsSubmitting(false)
+        return
+      }
+
+      const { data: existingOrderItems, error: existingItemsError } = await supabase
+        .from("order_items")
+        .select("id, product_id")
+        .eq("order_id", editingOrderId)
+
+      if (existingItemsError) {
+        console.error("Error fetching existing order items:", existingItemsError)
+        alert("発注明細の取得に失敗しました")
+        setIsSubmitting(false)
+        return
+      }
+
+      try {
+        const itemsWithFulfillment = await getOrderItemFulfillment(orderItems)
+        const existingByProductId = new Map((existingOrderItems || []).map((item) => [item.product_id, item.id]))
+        const incomingProductIds = new Set(orderItems.map((item) => item.product_id))
+        const orderItemIdsToDelete = (existingOrderItems || [])
+          .filter((item) => !incomingProductIds.has(item.product_id))
+          .map((item) => item.id)
+
+        if (orderItemIdsToDelete.length > 0) {
+          const { error: deleteError } = await supabase
+            .from("order_items")
+            .delete()
+            .in("id", orderItemIdsToDelete)
+
+          if (deleteError) throw deleteError
+        }
+
+        for (const item of itemsWithFulfillment) {
+          const payload = {
+            quantity: item.quantity,
+            notes: item.notes || null,
+            hq_stock_at_order: item.hqStockAtOrder,
+            fulfilled_from: item.fulfilledFrom,
+          }
+
+          const existingId = existingByProductId.get(item.product_id)
+          if (existingId) {
+            const { error: updateError } = await supabase
+              .from("order_items")
+              .update(payload)
+              .eq("id", existingId)
+
+            if (updateError) throw updateError
+          } else {
+            const { error: insertError } = await supabase
+              .from("order_items")
+              .insert({
+                order_id: editingOrderId,
+                product_id: item.product_id,
+                quantity: item.quantity,
+                notes: item.notes || null,
+                hq_stock_at_order: item.hqStockAtOrder,
+                fulfilled_from: item.fulfilledFrom,
+              })
+
+            if (insertError) throw insertError
+          }
+        }
+
+        const { error: orderUpdateError } = await supabase
+          .from("orders")
+          .update({ updated_at: new Date().toISOString() })
+          .eq("id", editingOrderId)
+
+        if (orderUpdateError) throw orderUpdateError
+
+        setOrderNumber(orderData.order_number || editingOrderNumber)
+        setLastSubmitMode("update")
+        setIsSuccessDialogOpen(true)
+        setOrderItems([])
+        setOrderHistory([])
+      } catch (error) {
+        console.error("Error updating order:", error)
+        alert("発注の更新に失敗しました")
+        setIsSubmitting(false)
+        return
+      }
+    } else {
+      const { data, error } = await supabase.rpc("create_order_with_items", {
+        p_store_id: store.id,
+        p_items: orderItems.map(item => ({
+          product_id: item.product_id,
+          quantity: item.quantity,
+          notes: item.notes || null,
+        })),
+      })
+
+      if (error) {
+        console.error("Error creating order:", error)
+        alert("発注の送信に失敗しました")
+        setIsSubmitting(false)
+        return
+      }
+
+      const result = data as { success: boolean; error?: string; order_number?: string }
+
+      if (!result.success) {
+        alert(`発注に失敗しました: ${result.error}`)
+        setIsSubmitting(false)
+        return
+      }
+
+      setOrderNumber(result.order_number || "")
+      setLastSubmitMode("create")
+      setIsSuccessDialogOpen(true)
+      setOrderItems([])
+      setOrderHistory([])
     }
 
-    const result = data as { success: boolean; error?: string; order_number?: string }
-
-    if (!result.success) {
-      alert(`発注に失敗しました: ${result.error}`)
-      setIsSubmitting(false)
-      return
-    }
-
-    setOrderNumber(result.order_number || "")
-    setIsSuccessDialogOpen(true)
-    setOrderItems([])
     setIsSubmitting(false)
-    setOrderHistory([])
   }
 
   const toggleOrderExpanded = (orderId: string) => {
@@ -612,12 +876,28 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
           <TabsContent value="order">
             <div className="grid gap-6 lg:grid-cols-3">
               <div className="lg:col-span-2 space-y-4">
+                {editingOrderId && (
+                  <Card className="border-primary/30 bg-primary/5">
+                    <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-primary">発注修正モード</p>
+                        <p className="text-sm text-muted-foreground">
+                          発注番号 <span className="font-mono font-medium text-foreground">{editingOrderNumber}</span> を編集中です。
+                        </p>
+                      </div>
+                      <Button variant="outline" onClick={resetEditingOrder}>
+                        新規発注に戻す
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+
                 <Card>
                   <CardHeader>
                     <CardTitle>商品を選択</CardTitle>
-                    <CardDescription>発注したい商品をクリックしてカートに追加</CardDescription>
+                    <CardDescription>ラインと属性を選びながら、見分けやすい表示で商品を追加できます</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent className="space-y-5">
                     <div className="flex flex-col gap-3 sm:flex-row">
                       <div className="relative flex-1">
                         <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -645,11 +925,25 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
 
                     {/* エクステカテゴリ: 商品ライン選択UI */}
                     {isExtensionCategory && (
-                      <div className="space-y-4">
+                      <div className="space-y-5">
+                        <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 via-background to-background p-4">
+                          <div className="flex items-start gap-3">
+                            <div className="rounded-lg bg-primary/10 p-2 text-primary">
+                              <Layers3 className="size-5" />
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-base font-semibold">エクステ商品は階層で選択</p>
+                              <p className="text-sm text-muted-foreground">
+                                商品ラインを選んでから、カール・長さ・カラーの順に絞り込むと見間違いを減らせます。
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
                         {/* 商品ライン一覧 */}
-                        <div className="space-y-2">
+                        <div className="space-y-3">
                           <p className="text-sm font-medium text-muted-foreground">商品ラインを選択</p>
-                          <div className="grid gap-2 sm:grid-cols-2">
+                          <div className="grid gap-3 sm:grid-cols-2">
                             {extensionLines.map((line) => (
                               <button
                                 key={line.name}
@@ -662,18 +956,18 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
                                     setLineSelections({})
                                   }
                                 }}
-                                className={`flex items-center justify-between rounded-lg border p-4 text-left transition-colors hover:bg-accent ${
-                                  selectedLine === line.name ? "border-primary bg-primary/5 ring-1 ring-primary" : ""
+                                className={`flex items-center justify-between rounded-xl border px-5 py-4 text-left transition-colors hover:bg-accent ${
+                                  selectedLine === line.name ? "border-primary bg-primary/5 ring-2 ring-primary/30" : "bg-card"
                                 }`}
                               >
                                 <div>
-                                  <p className="font-medium">{line.name}</p>
-                                  <p className="text-xs text-muted-foreground">{line.parsedProducts.length}種類</p>
+                                  <p className="text-base font-semibold">{line.name}</p>
+                                  <p className="mt-1 text-sm text-muted-foreground">{line.parsedProducts.length}種類</p>
                                 </div>
                                 {selectedLine === line.name ? (
-                                  <ChevronDown className="size-4 text-primary" />
+                                  <ChevronDown className="size-5 text-primary" />
                                 ) : (
-                                  <ChevronRight className="size-4 text-muted-foreground" />
+                                  <ChevronRight className="size-5 text-muted-foreground" />
                                 )}
                               </button>
                             ))}
@@ -682,23 +976,26 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
 
                         {/* 選択中のラインの階層セレクト */}
                         {selectedLine && currentLineData && (
-                          <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-4 space-y-4">
+                          <div className="space-y-4 rounded-xl border-2 border-primary/30 bg-primary/5 p-5">
                             <div className="flex items-center justify-between">
-                              <p className="font-medium text-primary">{selectedLine}</p>
+                              <div className="space-y-1">
+                                <p className="text-lg font-semibold text-primary">{selectedLine}</p>
+                                <p className="text-sm text-muted-foreground">属性を上から順に選択してください</p>
+                              </div>
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="size-7"
+                                className="size-8"
                                 onClick={() => { setSelectedLine(null); setLineSelections({}) }}
                               >
                                 <X className="size-4" />
                               </Button>
                             </div>
 
-                            <div className="flex flex-wrap gap-3">
+                            <div className="flex flex-wrap gap-4">
                               {currentLineData.availableOptions.map((opt) => (
-                                <div key={opt.key} className="space-y-1">
-                                  <p className="text-xs font-medium text-muted-foreground">{opt.key}</p>
+                                <div key={opt.key} className="space-y-2">
+                                  <p className="text-sm font-medium text-muted-foreground">{opt.key}</p>
                                   <Select
                                     value={lineSelections[opt.key] || ""}
                                     onValueChange={(value) => {
@@ -717,13 +1014,21 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
                                       setLineSelections(newSelections)
                                     }}
                                   >
-                                    <SelectTrigger className="w-36 bg-background">
+                                    <SelectTrigger className="h-11 w-44 bg-background text-base">
                                       <SelectValue placeholder={`${opt.key}を選択`} />
                                     </SelectTrigger>
                                     <SelectContent>
                                       {opt.values.map((val) => (
                                         <SelectItem key={val} value={val}>
-                                          {val}
+                                          <div className="flex items-center gap-2">
+                                            {opt.key === "カラー" && (
+                                              <span
+                                                className="size-3 rounded-full border border-slate-300"
+                                                style={{ backgroundColor: getColorSwatch(val) }}
+                                              />
+                                            )}
+                                            <span>{val}</span>
+                                          </div>
                                         </SelectItem>
                                       ))}
                                     </SelectContent>
@@ -734,13 +1039,38 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
 
                             {/* 商品が確定したらカートに追加ボタン */}
                             {currentLineData.matchedProduct && (
-                              <div className="flex items-center justify-between rounded-md border bg-background p-3">
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-sm font-medium truncate">{currentLineData.matchedProduct.product_name}</p>
-                                  <p className="text-xs text-muted-foreground">{currentLineData.matchedProduct.product_code}</p>
+                              <div className="flex flex-col gap-4 rounded-xl border bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="min-w-0 flex-1 space-y-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-base font-semibold">{selectedLine}</p>
+                                    {(() => {
+                                      const display = getProductDisplay(currentLineData.matchedProduct)
+                                      return display.emphasis ? (
+                                        <Badge variant="secondary" className="gap-2 rounded-full px-3 py-1 text-sm">
+                                          {display.parsed?.attributes["カラー"] && (
+                                            <span
+                                              className="size-3 rounded-full border border-slate-300"
+                                              style={{ backgroundColor: getColorSwatch(display.parsed.attributes["カラー"]) }}
+                                            />
+                                          )}
+                                          <span className="font-semibold">{display.emphasis}</span>
+                                        </Badge>
+                                      ) : null
+                                    })()}
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {currentLineData.line.attributeOrder.map((key) => (
+                                      lineSelections[key] ? (
+                                        <Badge key={key} variant="outline" className="px-3 py-1 text-sm">
+                                          {key}: {lineSelections[key]}
+                                        </Badge>
+                                      ) : null
+                                    ))}
+                                  </div>
+                                  <p className="text-sm text-muted-foreground">{currentLineData.matchedProduct.product_code}</p>
                                 </div>
                                 <Button
-                                  size="sm"
+                                  size="lg"
                                   onClick={() => handleAddExtProduct(currentLineData.matchedProduct!)}
                                 >
                                   <Plus className="size-4" />
@@ -753,25 +1083,48 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
 
                         {/* エクステ単品商品（コーム、リムーバー等） */}
                         {filteredSingleExtProducts.length > 0 && (
-                          <div className="space-y-2">
+                          <div className="space-y-3">
                             <p className="text-sm font-medium text-muted-foreground">その他のエクステ商品</p>
-                            <div className="grid gap-2 sm:grid-cols-2">
+                            <div className="grid gap-3 sm:grid-cols-2">
                               {filteredSingleExtProducts.map((product) => {
                                 const inCart = orderItems.find(item => item.product_id === product.id)
+                                const display = getProductDisplay(product)
                                 return (
                                   <button
                                     key={product.id}
                                     onClick={() => handleAddProduct(product)}
-                                    className={`flex items-center justify-between rounded-lg border p-3 text-left transition-colors hover:bg-accent ${
-                                      inCart ? "border-primary bg-primary/5" : ""
+                                    className={`flex items-center justify-between rounded-xl border px-4 py-4 text-left transition-colors hover:bg-accent ${
+                                      inCart ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "bg-card"
                                     }`}
                                   >
-                                    <div className="min-w-0 flex-1">
-                                      <p className="font-medium truncate">{product.product_name}</p>
-                                      <p className="text-xs text-muted-foreground">{product.product_code}</p>
+                                    <div className="min-w-0 flex-1 space-y-1">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <p className="text-base font-semibold">{display.title}</p>
+                                        {display.emphasis && (
+                                          <Badge variant="secondary" className="gap-2 rounded-full px-3 py-1 text-sm">
+                                            {display.parsed?.attributes["カラー"] && (
+                                              <span
+                                                className="size-3 rounded-full border border-slate-300"
+                                                style={{ backgroundColor: getColorSwatch(display.parsed.attributes["カラー"]) }}
+                                              />
+                                            )}
+                                            <span className="font-semibold">{display.emphasis}</span>
+                                          </Badge>
+                                        )}
+                                      </div>
+                                      {display.parsed && (
+                                        <div className="flex flex-wrap gap-2">
+                                          {Object.entries(display.parsed.attributes).map(([key, value]) => (
+                                            <Badge key={key} variant="outline" className="px-2.5 py-0.5">
+                                              {key}: {value}
+                                            </Badge>
+                                          ))}
+                                        </div>
+                                      )}
+                                      <p className="text-sm text-muted-foreground">{product.product_code}</p>
                                     </div>
                                     {inCart ? (
-                                      <Badge variant="default" className="ml-2 shrink-0">
+                                      <Badge variant="default" className="ml-2 shrink-0 text-sm">
                                         {inCart.quantity}
                                       </Badge>
                                     ) : (
@@ -787,31 +1140,44 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
                     )}
 
                     {/* 通常商品（エクステ以外） */}
-                    {!isExtensionCategory && (
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {filteredProducts.length === 0 ? (
-                          <p className="col-span-2 py-8 text-center text-muted-foreground">
-                            商品が見つかりません
-                          </p>
-                        ) : (
-                          filteredProducts.map((product) => {
+                    {filteredProducts.length > 0 && (
+                      <div className="space-y-3">
+                        {isExtensionCategory && (
+                          <p className="text-sm font-medium text-muted-foreground">通常商品</p>
+                        )}
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {filteredProducts.map((product) => {
                             const inCart = orderItems.find(item => item.product_id === product.id)
+                            const display = getProductDisplay(product)
                             return (
                               <button
                                 key={product.id}
                                 onClick={() => handleAddProduct(product)}
-                                className={`flex items-center justify-between rounded-lg border p-3 text-left transition-colors hover:bg-accent ${
-                                  inCart ? "border-primary bg-primary/5" : ""
+                                className={`flex items-center justify-between rounded-xl border px-4 py-4 text-left transition-colors hover:bg-accent ${
+                                  inCart ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "bg-card"
                                 }`}
                               >
-                                <div className="min-w-0 flex-1">
-                                  <p className="font-medium truncate">{product.product_name}</p>
-                                  <p className="text-xs text-muted-foreground">
+                                <div className="min-w-0 flex-1 space-y-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-base font-semibold">{display.title}</p>
+                                    {display.emphasis && (
+                                      <Badge variant="secondary" className="gap-2 rounded-full px-3 py-1 text-sm">
+                                        {display.parsed?.attributes["カラー"] && (
+                                          <span
+                                            className="size-3 rounded-full border border-slate-300"
+                                            style={{ backgroundColor: getColorSwatch(display.parsed.attributes["カラー"]) }}
+                                          />
+                                        )}
+                                        <span className="font-semibold">{display.emphasis}</span>
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-muted-foreground">
                                     {product.product_code} / {product.categories?.name || "-"}
                                   </p>
                                 </div>
                                 {inCart ? (
-                                  <Badge variant="default" className="ml-2 shrink-0">
+                                  <Badge variant="default" className="ml-2 shrink-0 text-sm">
                                     {inCart.quantity}
                                   </Badge>
                                 ) : (
@@ -819,9 +1185,16 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
                                 )}
                               </button>
                             )
-                          })
-                        )}
+                          })}
+                        </div>
                       </div>
+                    )}
+
+                    {((isExtensionCategory && extensionLines.length === 0 && filteredSingleExtProducts.length === 0 && filteredProducts.length === 0)
+                      || (!isExtensionCategory && filteredProducts.length === 0)) && (
+                      <p className="py-8 text-center text-muted-foreground">
+                        商品が見つかりません
+                      </p>
                     )}
                   </CardContent>
                 </Card>
@@ -846,12 +1219,17 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
                           {orderItems.map((item) => (
                             <div
                               key={item.product_id}
-                              className="rounded-md border p-3 space-y-2"
+                              className="space-y-3 rounded-xl border p-4"
                             >
                               <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-sm font-medium leading-tight">{item.product_name}</p>
-                                  <p className="text-xs text-muted-foreground">{item.product_code}</p>
+                                <div className="min-w-0 flex-1 space-y-1">
+                                  <p className="text-base font-semibold leading-tight">{item.product_name}</p>
+                                  <p className="text-sm text-muted-foreground">{item.product_code}</p>
+                                  {isDocumentCategory(item.category_name) && (
+                                    <Badge variant="outline" className="text-xs">
+                                      100単位で発注
+                                    </Badge>
+                                  )}
                                 </div>
                                 <Button
                                   variant="ghost"
@@ -862,30 +1240,31 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
                                   <Trash2 className="size-4" />
                                 </Button>
                               </div>
-                              <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-2">
                                 <Button
                                   variant="outline"
                                   size="icon"
-                                  className="size-7"
-                                  onClick={() => handleUpdateQuantity(item.product_id, item.quantity - 1)}
+                                  className="size-8"
+                                  onClick={() => handleUpdateQuantity(item.product_id, item.quantity - getQuantityStep(item.category_name))}
                                 >
                                   -
                                 </Button>
                                 <Input
                                   type="number"
-                                  min="1"
+                                  min={getQuantityStep(item.category_name)}
+                                  step={getQuantityStep(item.category_name)}
                                   value={item.quantity}
                                   onChange={(e) => {
                                     const val = parseInt(e.target.value)
                                     if (!isNaN(val)) handleUpdateQuantity(item.product_id, val)
                                   }}
-                                  className="w-14 text-center h-7"
+                                  className={`h-9 text-center text-base ${isDocumentCategory(item.category_name) ? "w-24" : "w-16"}`}
                                 />
                                 <Button
                                   variant="outline"
                                   size="icon"
-                                  className="size-7"
-                                  onClick={() => handleUpdateQuantity(item.product_id, item.quantity + 1)}
+                                  className="size-8"
+                                  onClick={() => handleUpdateQuantity(item.product_id, item.quantity + getQuantityStep(item.category_name))}
                                 >
                                   +
                                 </Button>
@@ -919,7 +1298,7 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
                             ) : (
                               <ShoppingCart className="size-4" />
                             )}
-                            発注を送信
+                            {editingOrderId ? "発注内容を更新" : "発注を送信"}
                           </Button>
                         </div>
                       </div>
@@ -953,28 +1332,41 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
                   <div className="space-y-2">
                     {orderHistory.map((order) => (
                       <div key={order.id} className="border rounded-lg">
-                        <button
-                          onClick={() => toggleOrderExpanded(order.id)}
-                          className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
-                        >
+                        <div className="flex items-center justify-between gap-3 p-4 hover:bg-muted/50 transition-colors">
                           <div className="flex items-center gap-4">
-                            {expandedOrders.has(order.id) ? (
-                              <ChevronDown className="size-4" />
-                            ) : (
-                              <ChevronRight className="size-4" />
-                            )}
-                            <div className="text-left">
-                              <p className="font-mono font-medium">{order.order_number}</p>
-                              <p className="text-sm text-muted-foreground">{formatDate(order.created_at)}</p>
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() => toggleOrderExpanded(order.id)}
+                              className="flex items-center gap-4 text-left"
+                            >
+                              {expandedOrders.has(order.id) ? (
+                                <ChevronDown className="size-4" />
+                              ) : (
+                                <ChevronRight className="size-4" />
+                              )}
+                              <div className="text-left">
+                                <p className="font-mono font-medium">{order.order_number}</p>
+                                <p className="text-sm text-muted-foreground">{formatDate(order.created_at)}</p>
+                              </div>
+                            </button>
                           </div>
                           <div className="flex items-center gap-3">
                             <span className="text-sm text-muted-foreground">
                               {order.items.length}商品
                             </span>
+                            {order.status === "pending" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleEditOrder(order)}
+                              >
+                                <Pencil className="size-4" />
+                                修正
+                              </Button>
+                            )}
                             {getStatusBadge(order.status)}
                           </div>
-                        </button>
+                        </div>
                         {expandedOrders.has(order.id) && (
                           <div className="border-t px-4 pb-4">
                             <Table>
@@ -1016,17 +1408,20 @@ export default function StoreOrderPage({ params }: { params: Promise<{ code: str
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-green-600">
               <Check className="size-5" />
-              発注を受け付けました
+              {lastSubmitMode === "update" ? "発注内容を更新しました" : "発注を受け付けました"}
             </DialogTitle>
             <DialogDescription>
-              本部にて処理されるまでお待ちください
+              {lastSubmitMode === "update" ? "更新内容を保存しました" : "本部にて処理されるまでお待ちください"}
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-md bg-muted p-4 text-center">
             <p className="text-sm text-muted-foreground">発注番号</p>
             <p className="text-2xl font-bold font-mono">{orderNumber}</p>
           </div>
-          <Button onClick={() => setIsSuccessDialogOpen(false)} className="w-full">
+          <Button onClick={() => {
+            setIsSuccessDialogOpen(false)
+            resetEditingOrder()
+          }} className="w-full">
             新しい発注を作成
           </Button>
         </DialogContent>

@@ -22,13 +22,12 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Search, AlertTriangle, Printer, ShoppingCart, Loader2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
-import type { Product, Category, HqInventory, Maker, Staff } from "@/types/database"
+import type { Product, Category, HqInventory, Maker } from "@/types/database"
 
 type AlertItem = Product & {
   hq_inventory: HqInventory | null
   categories: Category | null
   makers: Maker | null
-  staff: Staff | null
 }
 
 export default function AlertsPage() {
@@ -36,7 +35,6 @@ export default function AlertsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
-  const [selectedStaff, setSelectedStaff] = useState<string>("all")
 
   const supabase = createClient()
 
@@ -49,15 +47,15 @@ export default function AlertsPage() {
         *,
         hq_inventory (*),
         categories (*),
-        makers (*),
-        staff (*)
+        makers (*)
       `)
       .eq("is_active", true)
+      .eq("track_hq_inventory", true)
 
     if (error) {
       console.error("Error fetching alerts:", error)
     } else if (data) {
-      // Filter products where quantity <= threshold
+      // 本部在庫管理ON & 在庫が閾値以下の商品のみアラート対象
       const lowStockItems = (data as AlertItem[]).filter(item => {
         const quantity = item.hq_inventory?.quantity ?? 0
         const threshold = item.hq_inventory?.threshold ?? 5
@@ -75,14 +73,12 @@ export default function AlertsPage() {
   }, [])
 
   const categories = [...new Set(alerts.map(item => item.categories?.name).filter(Boolean))]
-  const staffList = [...new Set(alerts.map(item => item.staff?.name).filter(Boolean))]
 
   const filteredAlerts = alerts.filter(alert => {
     const matchesSearch = alert.product_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       alert.product_code.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesCategory = selectedCategory === "all" || alert.categories?.name === selectedCategory
-    const matchesStaff = selectedStaff === "all" || alert.staff?.name === selectedStaff
-    return matchesSearch && matchesCategory && matchesStaff
+    return matchesSearch && matchesCategory
   })
 
   const handlePrint = () => {
@@ -207,19 +203,6 @@ export default function AlertsPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={selectedStaff} onValueChange={setSelectedStaff}>
-              <SelectTrigger className="w-full sm:w-40">
-                <SelectValue placeholder="担当者" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">すべて</SelectItem>
-                {staffList.map((staff) => (
-                  <SelectItem key={staff} value={staff!}>
-                    {staff}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
         </CardHeader>
         <CardContent>
@@ -247,7 +230,6 @@ export default function AlertsPage() {
                   <TableHead className="text-right tabular-nums">現在庫</TableHead>
                   <TableHead className="text-right tabular-nums">閾値</TableHead>
                   <TableHead className="text-right tabular-nums">不足</TableHead>
-                  <TableHead>担当</TableHead>
                   <TableHead className="w-32 no-print">操作</TableHead>
                 </TableRow>
               </TableHeader>
@@ -274,13 +256,6 @@ export default function AlertsPage() {
                       <TableCell className="text-right tabular-nums font-medium">
                         -{shortage}
                       </TableCell>
-                      <TableCell>
-                        {alert.staff ? (
-                          <Badge variant="outline">{alert.staff.name}</Badge>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
                       <TableCell className="no-print">
                         <Button
                           variant="outline"
@@ -303,39 +278,6 @@ export default function AlertsPage() {
         </CardContent>
       </Card>
 
-      {staffList.length > 0 && (
-        <Card className="no-print">
-          <CardHeader>
-            <CardTitle className="text-lg">担当者別サマリー</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {staffList.map((staff) => {
-                const staffAlerts = alerts.filter(a => a.staff?.name === staff)
-                const staffShortage = staffAlerts.reduce((sum, a) => sum + getShortage(a), 0)
-                return (
-                  <div key={staff} className="rounded-md border p-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-medium">{staff}</h3>
-                      <Badge variant="destructive">{staffAlerts.length}件</Badge>
-                    </div>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      総不足数: {staffShortage}個
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {[...new Set(staffAlerts.map(a => a.categories?.name).filter(Boolean))].map(cat => (
-                        <Badge key={cat} variant="secondary" className="text-xs">
-                          {cat}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   )
 }

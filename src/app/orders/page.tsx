@@ -462,7 +462,6 @@ export default function OrdersPage() {
                   <TableHead>店舗</TableHead>
                   <TableHead>商品数</TableHead>
                   <TableHead>ステータス</TableHead>
-                  <TableHead>担当者</TableHead>
                   <TableHead>発注日</TableHead>
                   <TableHead className="w-32 no-print">操作</TableHead>
                 </TableRow>
@@ -483,18 +482,6 @@ export default function OrdersPage() {
                     <TableCell className="font-medium">{order.stores?.store_name || "-"}</TableCell>
                     <TableCell className="tabular-nums">{order.order_items.length}点</TableCell>
                     <TableCell>{getStatusBadge(order.status as OrderStatus)}</TableCell>
-                    <TableCell>
-                      {order.staff ? (
-                        <div className="flex items-center gap-1">
-                          <Badge variant="outline">{order.staff.name}</Badge>
-                          {order.assignment_type === "auto" && (
-                            <span className="text-xs text-muted-foreground">(自動)</span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
                     <TableCell className="tabular-nums">{formatDate(order.created_at)}</TableCell>
                     <TableCell className="no-print">
                       <div className="flex gap-1">
@@ -538,14 +525,10 @@ export default function OrdersPage() {
           </DialogHeader>
           {selectedOrder && (
             <div className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <p className="text-sm text-muted-foreground">ステータス</p>
                   <p className="font-medium">{getStatusBadge(selectedOrder.status as OrderStatus)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">担当者</p>
-                  <p className="font-medium">{selectedOrder.staff?.name || "未割当"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">発注日時</p>
@@ -622,38 +605,20 @@ export default function OrdersPage() {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreateOrder} className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>店舗 *</Label>
-                <Select value={newOrderStoreId} onValueChange={setNewOrderStoreId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="店舗を選択" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {stores.map((store) => (
-                      <SelectItem key={store.id} value={store.id}>
-                        {store.store_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>担当者</Label>
-                <Select value={newOrderStaffId || "auto"} onValueChange={(v) => setNewOrderStaffId(v === "auto" ? "" : v)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="自動割当" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="auto">自動割当（処理開始時に決定）</SelectItem>
-                    {staffList.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2">
+              <Label>店舗 *</Label>
+              <Select value={newOrderStoreId} onValueChange={setNewOrderStoreId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="店舗を選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stores.map((store) => (
+                    <SelectItem key={store.id} value={store.id}>
+                      {store.store_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
