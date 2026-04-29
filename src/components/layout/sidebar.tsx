@@ -11,7 +11,6 @@ import {
   LayoutDashboard,
   AlertTriangle,
   ClipboardList,
-  Users,
   ShoppingBag,
   BookOpen,
   History,

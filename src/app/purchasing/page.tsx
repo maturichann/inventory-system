@@ -479,9 +479,9 @@ export default function PurchasingPage() {
                                         return (
                                           <label
                                             key={store.checkKey}
-                                            className={`flex items-center gap-1.5 cursor-pointer rounded-md border px-2 py-1 transition-colors \${
-                                              isChecked 
-                                                ? "bg-green-100 border-green-500 text-green-700" 
+                                            className={`flex items-center gap-1.5 cursor-pointer rounded-md border px-2 py-1 transition-colors ${
+                                              isChecked
+                                                ? "bg-green-100 border-green-500 text-green-700"
                                                 : "hover:bg-muted"
                                             }`}
                                           >
